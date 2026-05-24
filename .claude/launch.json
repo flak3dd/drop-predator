@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Shopify App Dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "Vite Dev Server",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["react-router", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "Production Server",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["react-router-serve", "./build/server/index.js"],
+      "port": 3000
+    },
+    {
+      "name": "Test Watcher",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vitest"],
+      "port": 0
+    }
+  ]
+}

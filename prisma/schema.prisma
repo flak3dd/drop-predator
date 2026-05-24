@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model Drop {
+  id          String        @id @default(uuid())
+  shop        String
+  title       String
+  description String        @default("")
+  status      String        @default("DRAFT")
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  products    DropProduct[]
+
+  @@index([shop, status])
+  @@index([shop, scheduledAt])
+}
+
+model DropProduct {
+  id                String   @id @default(uuid())
+  dropId            String
+  drop              Drop     @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  productId         String
+  productTitle      String
+  productImage      String   @default("")
+  allocatedQuantity Int      @default(0)
+  dropPrice         String   @default("")
+  originalPrice     String   @default("")
+  createdAt         DateTime @default(now())
+
+  @@index([dropId])
+  @@index([productId])
+  @@unique([dropId, productId])
+}
+
+model Setting {
+  id              String  @id @default(uuid())
+  shop            String  @unique
+  autoActivate    Boolean @default(false)
+  autoRevertPrice Boolean @default(true)
+  autoPublish     Boolean @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
