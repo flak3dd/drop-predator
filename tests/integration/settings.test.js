@@ -19,7 +19,7 @@ describe("Settings loader", () => {
       autoPublish: false,
     });
 
-    const { loader } = await import("../app/routes/app.settings.jsx");
+    const { loader } = await import("../../app/routes/app.settings.jsx");
 
     const request = createGetRequest("http://localhost/app/settings");
     const result = await loader({ request });
@@ -41,12 +41,21 @@ describe("Settings action", () => {
   it("saves all settings when checkboxes are on", async () => {
     mockPrisma.setting.upsert.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.settings.jsx");
+    const { action } = await import("../../app/routes/app.settings.jsx");
 
     const request = createFormRequest({
       autoActivate: "on",
       autoRevertPrice: "on",
       autoPublish: "on",
+      scoreThreshold: "65",
+      marginFloor: "35",
+      moqMax: "100",
+      autonomyLevel: "3",
+      negotiationEnabled: "on",
+      pricingEnabled: "on",
+      importEnabled: "on",
+      deathPredictor: "on",
+      surgeEnabled: "on",
     });
 
     const result = await action({ request });
@@ -54,24 +63,26 @@ describe("Settings action", () => {
     expect(result.success).toBe("Settings saved");
     expect(mockPrisma.setting.upsert).toHaveBeenCalledWith({
       where: { shop: mockSession.shop },
-      update: {
+      update: expect.objectContaining({
         autoActivate: true,
         autoRevertPrice: true,
         autoPublish: true,
-      },
-      create: {
+        engineConfig: expect.any(String),
+      }),
+      create: expect.objectContaining({
         shop: mockSession.shop,
         autoActivate: true,
         autoRevertPrice: true,
         autoPublish: true,
-      },
+        engineConfig: expect.any(String),
+      }),
     });
   });
 
   it("saves all settings as false when checkboxes are unchecked", async () => {
     mockPrisma.setting.upsert.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.settings.jsx");
+    const { action } = await import("../../app/routes/app.settings.jsx");
 
     // Unchecked checkboxes don't send any value
     const request = createFormRequest({});
@@ -81,24 +92,26 @@ describe("Settings action", () => {
     expect(result.success).toBe("Settings saved");
     expect(mockPrisma.setting.upsert).toHaveBeenCalledWith({
       where: { shop: mockSession.shop },
-      update: {
+      update: expect.objectContaining({
         autoActivate: false,
         autoRevertPrice: false,
         autoPublish: false,
-      },
-      create: {
+        engineConfig: expect.any(String),
+      }),
+      create: expect.objectContaining({
         shop: mockSession.shop,
         autoActivate: false,
         autoRevertPrice: false,
         autoPublish: false,
-      },
+        engineConfig: expect.any(String),
+      }),
     });
   });
 
   it("handles partial checkbox state", async () => {
     mockPrisma.setting.upsert.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.settings.jsx");
+    const { action } = await import("../../app/routes/app.settings.jsx");
 
     const request = createFormRequest({
       autoRevertPrice: "on",
@@ -109,11 +122,11 @@ describe("Settings action", () => {
     expect(result.success).toBe("Settings saved");
     expect(mockPrisma.setting.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        update: {
+        update: expect.objectContaining({
           autoActivate: false,
           autoRevertPrice: true,
           autoPublish: false,
-        },
+        }),
       }),
     );
   });

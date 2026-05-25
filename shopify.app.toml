@@ -1,15 +1,40 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "f6538553a301458b2b304036a544e51f"
+name = "drop-predator"
 application_url = "https://example.com"
 embedded = true
-name = "drop-predator"
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/delete"
+  topics = [ "products/delete" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/update"
+  topics = [ "products/update" ]
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_products,write_products"
+scopes = "write_products,read_products,read_inventory,write_inventory,read_orders,write_orders,read_locations,read_product_listings"
 optional_scopes = [ ]
 use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ ]
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
@@ -34,29 +59,3 @@ required = true
 [metaobjects.app.example.fields.description]
 name = "Description"
 type = "multi_line_text_field"
-
-[webhooks]
-api_version = "2026-04"
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = [ "app/uninstalled" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/products/update"
-  topics = [ "products/update" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/products/delete"
-  topics = [ "products/delete" ]
-
-[auth]
-redirect_urls = [ ]
-
-[build]
-include_config_on_deploy = true
-automatically_update_urls_on_dev = true

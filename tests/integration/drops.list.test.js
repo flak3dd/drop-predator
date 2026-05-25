@@ -26,7 +26,7 @@ describe("Drops list loader", () => {
     ]);
 
     const { loader } = await import(
-      "../app/routes/app.drops._index.jsx"
+      "../../app/routes/app.drops._index.jsx"
     );
 
     const request = createGetRequest("http://localhost/app/drops");
@@ -45,7 +45,7 @@ describe("Drops list loader", () => {
     mockPrisma.drop.findMany.mockResolvedValue([]);
 
     const { loader } = await import(
-      "../app/routes/app.drops._index.jsx"
+      "../../app/routes/app.drops._index.jsx"
     );
 
     const request = createGetRequest(
@@ -65,7 +65,7 @@ describe("Drops list loader", () => {
     mockPrisma.drop.findMany.mockResolvedValue([]);
 
     const { loader } = await import(
-      "../app/routes/app.drops._index.jsx"
+      "../../app/routes/app.drops._index.jsx"
     );
 
     const request = createGetRequest(
@@ -85,7 +85,7 @@ describe("Drops list loader", () => {
     mockPrisma.drop.findMany.mockResolvedValue([]);
 
     const { loader } = await import(
-      "../app/routes/app.drops._index.jsx"
+      "../../app/routes/app.drops._index.jsx"
     );
 
     const request = createGetRequest("http://localhost/app/drops");
@@ -108,7 +108,7 @@ describe("Drops list loader", () => {
     ]);
 
     const { loader } = await import(
-      "../app/routes/app.drops._index.jsx"
+      "../../app/routes/app.drops._index.jsx"
     );
 
     const request = createGetRequest("http://localhost/app/drops");

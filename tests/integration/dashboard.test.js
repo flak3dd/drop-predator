@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   mockPrisma,
   mockAdmin,
-  mockSession,
   resetMocks,
   createGetRequest,
 } from "./setup.js";
@@ -19,7 +18,7 @@ describe("Dashboard loader", () => {
       .mockResolvedValueOnce(4); // completed
     mockPrisma.drop.findMany.mockResolvedValue([]);
 
-    const { loader } = await import("../app/routes/app._index.jsx");
+    const { loader } = await import("../../app/routes/app._index.jsx");
 
     const request = createGetRequest("http://localhost/app");
     const result = await loader({ request });
@@ -42,7 +41,7 @@ describe("Dashboard loader", () => {
       },
     ]);
 
-    const { loader } = await import("../app/routes/app._index.jsx");
+    const { loader } = await import("../../app/routes/app._index.jsx");
 
     const request = createGetRequest("http://localhost/app");
     const result = await loader({ request });
@@ -63,7 +62,7 @@ describe("Dashboard loader", () => {
       .mockResolvedValueOnce(2); // overdue count
     mockPrisma.drop.findMany.mockResolvedValue([]);
 
-    const { loader } = await import("../app/routes/app._index.jsx");
+    const { loader } = await import("../../app/routes/app._index.jsx");
 
     const request = createGetRequest("http://localhost/app");
     const result = await loader({ request });
@@ -125,7 +124,7 @@ describe("Dashboard loader", () => {
           }),
       });
 
-    const { loader } = await import("../app/routes/app._index.jsx");
+    const { loader } = await import("../../app/routes/app._index.jsx");
 
     const request = createGetRequest("http://localhost/app");
     const result = await loader({ request });
@@ -156,7 +155,7 @@ describe("Dashboard loader", () => {
     mockPrisma.drop.count.mockResolvedValue(0);
     mockPrisma.drop.update.mockResolvedValue({});
 
-    const { loader } = await import("../app/routes/app._index.jsx");
+    const { loader } = await import("../../app/routes/app._index.jsx");
 
     const request = createGetRequest("http://localhost/app");
     const result = await loader({ request });

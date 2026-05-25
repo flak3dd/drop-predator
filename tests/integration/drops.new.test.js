@@ -16,7 +16,7 @@ describe("Create Drop action", () => {
       status: "DRAFT",
     });
 
-    const { action } = await import("../app/routes/app.drops.new.jsx");
+    const { action } = await import("../../app/routes/app.drops.new.jsx");
 
     const request = createFormRequest({
       title: "Flash Sale",
@@ -48,7 +48,7 @@ describe("Create Drop action", () => {
       status: "SCHEDULED",
     });
 
-    const { action } = await import("../app/routes/app.drops.new.jsx");
+    const { action } = await import("../../app/routes/app.drops.new.jsx");
 
     const request = createFormRequest({
       title: "Scheduled Drop",
@@ -68,7 +68,7 @@ describe("Create Drop action", () => {
   });
 
   it("rejects drop with empty title", async () => {
-    const { action } = await import("../app/routes/app.drops.new.jsx");
+    const { action } = await import("../../app/routes/app.drops.new.jsx");
 
     const request = createFormRequest({
       title: "   ",
@@ -88,7 +88,7 @@ describe("Create Drop action", () => {
       title: "Trimmed Title",
     });
 
-    const { action } = await import("../app/routes/app.drops.new.jsx");
+    const { action } = await import("../../app/routes/app.drops.new.jsx");
 
     const request = createFormRequest({
       title: "  Trimmed Title  ",

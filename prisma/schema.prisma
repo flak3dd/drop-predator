@@ -42,6 +42,8 @@ model Drop {
 
   @@index([shop, status])
   @@index([shop, scheduledAt])
+  @@index([shop, createdAt])
+  @@index([status, scheduledAt])
 }
 
 model DropProduct {
@@ -69,4 +71,85 @@ model Setting {
   autoPublish     Boolean @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  engineConfig    String? @default("{}")
+}
+
+model EngineRun {
+  id          String   @id @default(uuid())
+  shop        String
+  niche       String
+  status      String   @default("RUNNING")
+  phase       Int      @default(0)
+  config      String   @default("{}")
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  products    EngineProduct[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop, status])
+  @@index([shop, startedAt])
+}
+
+model EngineProduct {
+  id                String   @id @default(uuid())
+  engineRunId       String?
+  engineRun         EngineRun? @relation(fields: [engineRunId], references: [id], onDelete: Cascade)
+  shop              String
+  sourceId          String
+  name              String
+  category          String
+  score             Int      @default(0)
+  margin            Int      @default(0)
+  price             Float    @default(0)
+  cost              Float    @default(0)
+  landedCost        Float    @default(0)
+  velocity          Int      @default(0)
+  trend             Int      @default(0)
+  lifecycle         String   @default("mature")
+  competition       String   @default("medium")
+  supplier          String
+  supplierScore     Int      @default(0)
+  moq               Int      @default(0)
+  discount          Int      @default(0)
+  sources           String   @default("[]")
+  searches          Int      @default(0)
+  impulse           Int      @default(0)
+  warnings          String   @default("[]")
+  negState          Int      @default(0)
+  activePrice       String   @default("standard")
+  discountImproved  Int      @default(0)
+  moqImproved       Int      @default(0)
+  aiNegotiated      Boolean  @default(false)
+  imported          Boolean  @default(false)
+  shopifyProductId  String?
+  listing           ProductListing?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([shop, imported])
+  @@index([shop, score])
+  @@index([shop, lifecycle])
+  @@index([engineRunId])
+  @@index([sourceId])
+  @@index([imported, createdAt])
+}
+
+model ProductListing {
+  id               String   @id @default(uuid())
+  engineProductId  String   @unique
+  engineProduct    EngineProduct @relation(fields: [engineProductId], references: [id], onDelete: Cascade)
+  title            String
+  description      String
+  descriptionHtml  String
+  bulletPoints     String   @default("[]")
+  seoTags          String   @default("[]")
+  metaDescription  String
+  collections      String   @default("[]")
+  pricingCopy      String
+  productType      String
+  aiGenerated      Boolean  @default(false)
+  generatedAt      DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }

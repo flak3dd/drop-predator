@@ -7,7 +7,7 @@ export default async () => {
 };
 
 function Extension() {
-  const { i18n, close, data } = shopify;
+  const { close, data } = shopify;
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
 

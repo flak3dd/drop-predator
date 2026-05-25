@@ -1,5 +1,6 @@
-import { useLoaderData, useNavigate, useFetcher } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import { useEffect } from "react";
+import PropTypes from "prop-types";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -135,7 +136,6 @@ export default function Dashboard() {
     recentDrops,
     autoActivated,
     overdueCount,
-    hasAutoActivate,
   } = useLoaderData();
   const navigate = useNavigate();
   const shopify = useAppBridge();
@@ -146,7 +146,7 @@ export default function Dashboard() {
         `Auto-activated ${autoActivated.length} drop${autoActivated.length !== 1 ? "s" : ""}`,
       );
     }
-  }, [autoActivated]);
+  }, [autoActivated, shopify]);
 
   return (
     <s-page heading="Drop Predator">
@@ -322,6 +322,11 @@ function StatCard({ label, value }) {
     </s-box>
   );
 }
+
+StatCard.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.string.isRequired,
+};
 
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);

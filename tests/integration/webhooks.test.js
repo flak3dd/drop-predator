@@ -22,7 +22,7 @@ describe("Webhook: products/update", () => {
     mockPrisma.dropProduct.updateMany.mockResolvedValue({ count: 2 });
 
     const { action } = await import(
-      "../app/routes/webhooks.products.update.jsx"
+      "../../app/routes/webhooks.products.update.jsx"
     );
 
     const request = new Request("http://localhost/webhooks/products/update", {
@@ -56,7 +56,7 @@ describe("Webhook: products/update", () => {
     mockPrisma.dropProduct.updateMany.mockResolvedValue({ count: 0 });
 
     const { action } = await import(
-      "../app/routes/webhooks.products.update.jsx"
+      "../../app/routes/webhooks.products.update.jsx"
     );
 
     const request = new Request("http://localhost/webhooks/products/update", {
@@ -88,7 +88,7 @@ describe("Webhook: products/delete", () => {
     mockPrisma.dropProduct.deleteMany.mockResolvedValue({ count: 3 });
 
     const { action } = await import(
-      "../app/routes/webhooks.products.delete.jsx"
+      "../../app/routes/webhooks.products.delete.jsx"
     );
 
     const request = new Request("http://localhost/webhooks/products/delete", {
@@ -113,7 +113,7 @@ describe("Webhook: products/delete", () => {
     mockPrisma.dropProduct.deleteMany.mockResolvedValue({ count: 0 });
 
     const { action } = await import(
-      "../app/routes/webhooks.products.delete.jsx"
+      "../../app/routes/webhooks.products.delete.jsx"
     );
 
     const request = new Request("http://localhost/webhooks/products/delete", {
@@ -142,7 +142,7 @@ describe("Webhook: app/uninstalled", () => {
     mockPrisma.session.deleteMany.mockResolvedValue({ count: 1 });
 
     const { action } = await import(
-      "../app/routes/webhooks.app.uninstalled.jsx"
+      "../../app/routes/webhooks.app.uninstalled.jsx"
     );
 
     const request = new Request(
@@ -164,7 +164,7 @@ describe("Webhook: app/uninstalled", () => {
     });
 
     const { action } = await import(
-      "../app/routes/webhooks.app.uninstalled.jsx"
+      "../../app/routes/webhooks.app.uninstalled.jsx"
     );
 
     const request = new Request(

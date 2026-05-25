@@ -22,7 +22,7 @@ describe("API: GET /api/drops", () => {
       },
     ]);
 
-    const { loader } = await import("../app/routes/api.drops.jsx");
+    const { loader } = await import("../../app/routes/api.drops.jsx");
 
     const request = createGetRequest("http://localhost/api/drops");
     const response = await loader({ request });
@@ -36,7 +36,7 @@ describe("API: GET /api/drops", () => {
   it("filters drops by status query param", async () => {
     mockPrisma.drop.findMany.mockResolvedValue([]);
 
-    const { loader } = await import("../app/routes/api.drops.jsx");
+    const { loader } = await import("../../app/routes/api.drops.jsx");
 
     const request = createGetRequest(
       "http://localhost/api/drops?status=COMPLETED",
@@ -72,7 +72,7 @@ describe("API: GET /api/drops", () => {
       },
     ]);
 
-    const { loader } = await import("../app/routes/api.drops.jsx");
+    const { loader } = await import("../../app/routes/api.drops.jsx");
 
     const request = createGetRequest(
       "http://localhost/api/drops?productId=gid://shopify/Product/123",
@@ -97,7 +97,7 @@ describe("API: POST /api/drops — addProduct", () => {
     mockPrisma.dropProduct.findUnique.mockResolvedValue(null);
     mockPrisma.dropProduct.create.mockResolvedValue({ id: "dp-new" });
 
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({
       intent: "addProduct",
@@ -125,7 +125,7 @@ describe("API: POST /api/drops — addProduct", () => {
       id: "dp-existing",
     });
 
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({
       intent: "addProduct",
@@ -148,7 +148,7 @@ describe("API: POST /api/drops — addProduct", () => {
       status: "COMPLETED",
     });
 
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({
       intent: "addProduct",
@@ -164,7 +164,7 @@ describe("API: POST /api/drops — addProduct", () => {
   it("returns 404 for non-existent drop", async () => {
     mockPrisma.drop.findFirst.mockResolvedValue(null);
 
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({
       intent: "addProduct",
@@ -178,7 +178,7 @@ describe("API: POST /api/drops — addProduct", () => {
   });
 
   it("validates required fields", async () => {
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({
       intent: "addProduct",
@@ -200,7 +200,7 @@ describe("API: POST /api/drops — removeProduct", () => {
     });
     mockPrisma.dropProduct.deleteMany.mockResolvedValue({ count: 1 });
 
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({
       intent: "removeProduct",
@@ -230,7 +230,7 @@ describe("API: POST /api/drops — createDrop", () => {
       title: "New Drop",
     });
 
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({
       intent: "createDrop",
@@ -251,7 +251,7 @@ describe("API: POST /api/drops — createDrop", () => {
       title: "Scheduled Drop",
     });
 
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({
       intent: "createDrop",
@@ -269,7 +269,7 @@ describe("API: POST /api/drops — createDrop", () => {
   });
 
   it("rejects drop without title", async () => {
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({
       intent: "createDrop",
@@ -281,7 +281,7 @@ describe("API: POST /api/drops — createDrop", () => {
   });
 
   it("rejects unknown intent", async () => {
-    const { action } = await import("../app/routes/api.drops.jsx");
+    const { action } = await import("../../app/routes/api.drops.jsx");
 
     const request = createJsonRequest({ intent: "unknown" });
 

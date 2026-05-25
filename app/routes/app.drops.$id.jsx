@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLoaderData, useFetcher, useNavigate } from "react-router";
+import PropTypes from "prop-types";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { redirect } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -396,7 +397,7 @@ export default function DropDetail() {
       shopify.toast.show(fetcher.data.success);
       if (editing) setEditing(false);
     }
-  }, [fetcher.data]);
+  }, [fetcher.data, editing, shopify]);
 
   const addProducts = useCallback(async () => {
     try {
@@ -736,6 +737,21 @@ function EditForm({ drop, fetcher, onCancel }) {
   );
 }
 
+EditForm.propTypes = {
+  drop: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    title: PropTypes.string.isRequired,
+    description: PropTypes.string,
+    scheduledAt: PropTypes.string,
+  }).isRequired,
+  fetcher: PropTypes.shape({
+    state: PropTypes.string.isRequired,
+    Form: PropTypes.func.isRequired,
+    submit: PropTypes.func.isRequired,
+  }).isRequired,
+  onCancel: PropTypes.func.isRequired,
+};
+
 function ProductCard({ product, liveData, fetcher, readonly }) {
   const priceDisplay = liveData
     ? liveData.minPrice === liveData.maxPrice
@@ -777,10 +793,11 @@ function ProductCard({ product, liveData, fetcher, readonly }) {
         {!readonly && (
           <s-stack direction="inline" gap="tight">
             <div>
-              <label style={{ fontSize: 11, display: "block" }}>
+              <label htmlFor={`qty-${product.id}`} style={{ fontSize: 11, display: "block" }}>
                 Qty
               </label>
               <input
+                id={`qty-${product.id}`}
                 type="number"
                 min="0"
                 defaultValue={product.allocatedQuantity}
@@ -801,10 +818,11 @@ function ProductCard({ product, liveData, fetcher, readonly }) {
               />
             </div>
             <div>
-              <label style={{ fontSize: 11, display: "block" }}>
+              <label htmlFor={`price-${product.id}`} style={{ fontSize: 11, display: "block" }}>
                 Drop $
               </label>
               <input
+                id={`price-${product.id}`}
                 type="text"
                 placeholder="—"
                 defaultValue={product.dropPrice}
@@ -845,6 +863,30 @@ function ProductCard({ product, liveData, fetcher, readonly }) {
   );
 }
 
+ProductCard.propTypes = {
+  product: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    productId: PropTypes.string.isRequired,
+    productTitle: PropTypes.string.isRequired,
+    productImage: PropTypes.string,
+    allocatedQuantity: PropTypes.number.isRequired,
+    dropPrice: PropTypes.string,
+    originalPrice: PropTypes.string,
+  }).isRequired,
+  liveData: PropTypes.shape({
+    image: PropTypes.string,
+    minPrice: PropTypes.string,
+    maxPrice: PropTypes.string,
+    currency: PropTypes.string,
+    totalInventory: PropTypes.number,
+    status: PropTypes.string,
+  }),
+  fetcher: PropTypes.shape({
+    submit: PropTypes.func.isRequired,
+  }).isRequired,
+  readonly: PropTypes.bool,
+};
+
 function InfoRow({ label, value }) {
   return (
     <s-stack direction="inline" gap="base">
@@ -853,6 +895,11 @@ function InfoRow({ label, value }) {
     </s-stack>
   );
 }
+
+InfoRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+};
 
 function formatDuration(start, end) {
   const ms = end - start;

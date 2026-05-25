@@ -2,11 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   mockPrisma,
   mockAdmin,
-  mockSession,
-  mockAuthenticate,
   resetMocks,
   createFormRequest,
-  mockGraphqlResponse,
 } from "./setup.js";
 
 const DROP_FIXTURE = {
@@ -33,7 +30,7 @@ describe("Drop detail action: update", () => {
       title: "Updated Title",
     });
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({
       intent: "update",
@@ -59,7 +56,7 @@ describe("Drop detail action: update", () => {
     mockPrisma.setting.findUnique.mockResolvedValue(null);
     mockPrisma.drop.update.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({
       intent: "update",
@@ -84,7 +81,7 @@ describe("Drop detail action: update", () => {
     mockPrisma.setting.findUnique.mockResolvedValue(null);
     mockPrisma.drop.update.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({
       intent: "update",
@@ -105,7 +102,7 @@ describe("Drop detail action: update", () => {
     mockPrisma.drop.findFirst.mockResolvedValue(DROP_FIXTURE);
     mockPrisma.setting.findUnique.mockResolvedValue(null);
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({
       intent: "update",
@@ -132,7 +129,7 @@ describe("Drop detail action: addProducts", () => {
     ]);
     mockPrisma.dropProduct.createMany.mockResolvedValue({ count: 2 });
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const products = [
       { productId: "gid://shopify/Product/1", productTitle: "Existing" },
@@ -170,7 +167,7 @@ describe("Drop detail action: removeProduct", () => {
     mockPrisma.setting.findUnique.mockResolvedValue(null);
     mockPrisma.dropProduct.delete.mockResolvedValue({ id: "dp-1" });
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({
       intent: "removeProduct",
@@ -194,7 +191,7 @@ describe("Drop detail action: updateQuantity", () => {
     mockPrisma.setting.findUnique.mockResolvedValue(null);
     mockPrisma.dropProduct.update.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({
       intent: "updateQuantity",
@@ -216,7 +213,7 @@ describe("Drop detail action: updateQuantity", () => {
     mockPrisma.setting.findUnique.mockResolvedValue(null);
     mockPrisma.dropProduct.update.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({
       intent: "updateQuantity",
@@ -241,7 +238,7 @@ describe("Drop detail action: updatePrice", () => {
     mockPrisma.setting.findUnique.mockResolvedValue(null);
     mockPrisma.dropProduct.update.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({
       intent: "updatePrice",
@@ -307,7 +304,7 @@ describe("Drop detail action: activate", () => {
           }),
       });
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "activate" });
     const result = await action({ request, params: { id: "drop-1" } });
@@ -375,7 +372,7 @@ describe("Drop detail action: activate", () => {
           }),
       });
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "activate" });
     await action({ request, params: { id: "drop-1" } });
@@ -418,7 +415,7 @@ describe("Drop detail action: complete", () => {
         }),
     });
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "complete" });
     const result = await action({ request, params: { id: "drop-1" } });
@@ -441,7 +438,7 @@ describe("Drop detail action: complete", () => {
     });
     mockPrisma.drop.update.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "complete" });
     const result = await action({ request, params: { id: "drop-1" } });
@@ -465,7 +462,7 @@ describe("Drop detail action: cancel", () => {
     mockPrisma.dropProduct.findMany.mockResolvedValue([]);
     mockPrisma.drop.update.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "cancel" });
     const result = await action({ request, params: { id: "drop-1" } });
@@ -501,7 +498,7 @@ describe("Drop detail action: duplicate", () => {
     });
     mockPrisma.dropProduct.createMany.mockResolvedValue({ count: 1 });
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "duplicate" });
     const result = await action({ request, params: { id: "drop-1" } });
@@ -543,7 +540,7 @@ describe("Drop detail action: reactivate", () => {
     mockPrisma.setting.findUnique.mockResolvedValue(null);
     mockPrisma.drop.update.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "reactivate" });
     const result = await action({ request, params: { id: "drop-1" } });
@@ -564,7 +561,7 @@ describe("Drop detail action: delete", () => {
     mockPrisma.setting.findUnique.mockResolvedValue(null);
     mockPrisma.drop.delete.mockResolvedValue({});
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "delete" });
     const result = await action({ request, params: { id: "drop-1" } });
@@ -583,7 +580,7 @@ describe("Drop detail action: not found", () => {
   it("throws 404 for non-existent drop", async () => {
     mockPrisma.drop.findFirst.mockResolvedValue(null);
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "update", title: "x" });
 
@@ -600,7 +597,7 @@ describe("Drop detail action: unknown intent", () => {
     mockPrisma.drop.findFirst.mockResolvedValue(DROP_FIXTURE);
     mockPrisma.setting.findUnique.mockResolvedValue(null);
 
-    const { action } = await import("../app/routes/app.drops.$id.jsx");
+    const { action } = await import("../../app/routes/app.drops.$id.jsx");
 
     const request = createFormRequest({ intent: "bogus" });
     const result = await action({ request, params: { id: "drop-1" } });
