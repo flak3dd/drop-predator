@@ -3,12 +3,20 @@ import { LifecycleBadge } from "../engine-ui";
 import { fmt$ } from "../../lib/format";
 
 function MetricRow({ label, value, total, suffix = "" }) {
-  const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+  const hasTotal = total !== undefined && total !== null;
+  const percentage = hasTotal && total > 0 ? Math.round((value / total) * 100) : null;
   return (
     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 11 }}>
       <span style={{ color: "var(--p-color-text-secondary)" }}>{label}</span>
       <span>
-        <strong>{value}</strong> / {total} ({percentage}%){suffix && <span> {suffix}</span>}
+        <strong>{value}{suffix && !hasTotal ? suffix : ""}</strong>
+        {hasTotal && (
+          <>
+            {" / "}{total}
+            {percentage !== null && <span> ({percentage}%)</span>}
+          </>
+        )}
+        {suffix && hasTotal && <span> {suffix}</span>}
       </span>
     </div>
   );

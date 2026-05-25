@@ -1,10 +1,27 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import PropTypes from "prop-types";
+import { useLoaderData } from "react-router";
+import { useAppBridge } from "@shopify/app-bridge-react";
+import { boundary } from "@shopify/shopify-app-react-router/server";
+import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
 import { StatCard, ConfigSlider, ConfigToggle, DetailTable, LifecycleBadge, LogTag } from "../components/engine-ui";
 import { MonitoringDashboard } from "../components/engine/MonitoringDashboard";
 import { SchedulingConfig } from "../components/engine/SchedulingConfig";
 import { AlertsConfig } from "../components/engine/AlertsConfig";
 import { fmt$ } from "../lib/format";
+
+// ─── Server exports ───────────────────────────────────────────────────────────
+
+export const headers = (headersArgs) => boundary.headers(headersArgs);
+
+export const loader = async ({ request }) => {
+  const { session } = await authenticate.admin(request);
+  const settings = await prisma.setting.findUnique({ where: { shop: session.shop } });
+  const savedConfig = settings?.engineConfig ? JSON.parse(settings.engineConfig) : null;
+  return { savedConfig };
+};
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const NICHES = [
   { value: "gym", label: "Gym & tactical", icon: "🏋️" },
@@ -19,21 +36,37 @@ const PRESETS = {
   conservative: {
     label: "Conservative",
     description: "High quality, low risk products",
-    config: { scoreThreshold: 80, marginFloor: 40, moqMax: 25, autonomyLevel: 2 }
+    config: { scoreThreshold: 80, marginFloor: 40, moqMax: 25, autonomyLevel: 2 },
   },
   balanced: {
     label: "Balanced",
     description: "Good quality with moderate risk",
-    config: { scoreThreshold: 70, marginFloor: 35, moqMax: 50, autonomyLevel: 3 }
+    config: { scoreThreshold: 70, marginFloor: 35, moqMax: 50, autonomyLevel: 3 },
   },
   aggressive: {
     label: "Aggressive",
     description: "Maximize profit potential",
-    config: { scoreThreshold: 60, marginFloor: 30, moqMax: 100, autonomyLevel: 4 }
+    config: { scoreThreshold: 60, marginFloor: 30, moqMax: 100, autonomyLevel: 4 },
   },
 };
 
 const PHASES = ["idle", "Scout", "Score", "Negotiate", "Price", "Import", "Monitor"];
+
+const DEFAULT_CONFIG = {
+  scoreThreshold: 65, marginFloor: 35, moqMax: 50, autonomyLevel: 3,
+  negotiationEnabled: true, pricingEnabled: true, importEnabled: false,
+  deathPredictor: true, surgeEnabled: true,
+};
+
+const DEFAULT_SCHEDULING = {
+  enabled: false, frequency: "manual", scheduledTime: "09:00",
+  maxProducts: 100, autoStop: false, stopAfterHours: 4,
+};
+
+const DEFAULT_ALERTS = {
+  enabled: false, scoreThreshold: 80, marginThreshold: 40,
+  lowStockAlert: true, priceDropAlert: true, notifyChannels: ["app"],
+};
 
 function getActivePrice(p) {
   if (p.activePrice === "surge") return parseFloat((p.price * 1.12).toFixed(2));
@@ -42,7 +75,15 @@ function getActivePrice(p) {
   return p.price;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function EnginePage() {
+  const { savedConfig } = useLoaderData();
+  const shopify = useAppBridge();
+
+  // Split persisted config into core / scheduling / alerts
+  const { scheduling: savedScheduling, alerts: savedAlerts, ...savedCore } = savedConfig || {};
+
   const [running, setRunning] = useState(false);
   const [niche, setNiche] = useState("gym");
   const [phase, setPhase] = useState(0);
@@ -51,30 +92,17 @@ export default function EnginePage() {
   const [stats, setStats] = useState({ products: 0, avgMargin: 0, deals: 0, projRevenue: 0, sessionRev: 0 });
   const [logLines, setLogLines] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
-  const [config, setConfig] = useState({
-    scoreThreshold: 65, marginFloor: 35, moqMax: 50, autonomyLevel: 3,
-    negotiationEnabled: true, pricingEnabled: true, importEnabled: false,
-    deathPredictor: true, surgeEnabled: true,
-  });
+  const [config, setConfig] = useState(() => ({ ...DEFAULT_CONFIG, ...savedCore }));
   const [activeTab, setActiveTab] = useState("control");
-  const [scheduling, setScheduling] = useState({
-    enabled: false,
-    frequency: "manual",
-    scheduledTime: "09:00",
-    maxProducts: 100,
-    autoStop: false,
-    stopAfterHours: 4,
-  });
-  const [alerts, setAlerts] = useState({
-    enabled: false,
-    scoreThreshold: 80,
-    marginThreshold: 40,
-    lowStockAlert: true,
-    priceDropAlert: true,
-    notifyChannels: ["app"],
-  });
+  const [scheduling, setScheduling] = useState(savedScheduling || DEFAULT_SCHEDULING);
+  const [alerts, setAlerts] = useState(savedAlerts || DEFAULT_ALERTS);
   const [selectedPreset, setSelectedPreset] = useState("balanced");
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Loading / error states
+  const [actionLoading, setActionLoading] = useState(null); // null | string key
+  const [actionError, setActionError] = useState(null);
+  const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
 
   const pollRef = useRef(null);
 
@@ -88,7 +116,7 @@ export default function EnginePage() {
       if (data.products?.length) setProducts(data.products);
       if (data.stats) setStats(data.stats);
       if (data.log?.length) setLogLines(data.log);
-    } catch { /* silent */ }
+    } catch { /* silent poll failures */ }
   }, []);
 
   useEffect(() => {
@@ -97,42 +125,92 @@ export default function EnginePage() {
     return () => clearInterval(pollRef.current);
   }, [poll]);
 
+  // ── API helpers ─────────────────────────────────────────────────────────────
+
   const apiCall = async (body) => {
-    const res = await fetch("/api/engine", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await fetch("/api/engine", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Request failed (${res.status})`);
+    }
     return res.json();
   };
 
   const startPipeline = async () => {
-    await apiCall({ intent: "start", niche, config });
-    setRunning(true);
+    setActionLoading("start");
+    setActionError(null);
+    try {
+      await apiCall({ intent: "start", niche, config });
+      setRunning(true);
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const stopPipeline = async () => {
-    await apiCall({ intent: "stop" });
-    setRunning(false);
+    setActionLoading("stop");
+    setActionError(null);
+    try {
+      await apiCall({ intent: "stop" });
+      setRunning(false);
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const negotiateProduct = async (productId) => {
-    await apiCall({ intent: "negotiate", productId });
+    setActionLoading(`negotiate-${productId}`);
+    setActionError(null);
+    try {
+      await apiCall({ intent: "negotiate", productId });
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const setPriceMode = async (productId, mode) => {
-    await apiCall({ intent: "setPrice", productId, mode });
+    try {
+      await apiCall({ intent: "setPrice", productId, mode });
+    } catch (err) {
+      setActionError(err.message);
+    }
   };
 
   const importProducts = async (productIds) => {
-    await apiCall({ intent: "import", productIds });
+    setActionLoading("import");
+    setActionError(null);
+    try {
+      await apiCall({ intent: "import", productIds });
+      shopify.toast.show(`${productIds.length} product${productIds.length !== 1 ? "s" : ""} imported to store`);
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  // eslint-disable-next-line no-unused-vars
   const createDropFromProducts = async (productIds) => {
-    const title = `Engine Drop - ${niche} - ${new Date().toLocaleDateString()}`;
-    await apiCall({ intent: "createDrop", title, productIds });
-  };
-
-  // eslint-disable-next-line no-unused-vars
-  const importToDrop = async (dropId, productIds) => {
-    await apiCall({ intent: "importToDrop", dropId, productIds });
+    const title = `Engine Drop — ${niche} — ${new Date().toLocaleDateString()}`;
+    setActionLoading("createDrop");
+    setActionError(null);
+    try {
+      await apiCall({ intent: "createDrop", title, productIds });
+      shopify.toast.show("Drop created successfully");
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const applyPreset = (presetName) => {
@@ -144,6 +222,7 @@ export default function EnginePage() {
   };
 
   const saveConfiguration = async () => {
+    setSaveStatus("saving");
     try {
       const res = await fetch("/api/settings", {
         method: "POST",
@@ -152,62 +231,80 @@ export default function EnginePage() {
           engineConfig: JSON.stringify({ ...config, scheduling, alerts }),
         }),
       });
-      if (res.ok) {
-        // Show success message
-      }
-    } catch (error) {
-      console.error("Failed to save configuration:", error);
+      if (!res.ok) throw new Error(`Save failed (${res.status})`);
+      setSaveStatus("saved");
+      shopify.toast.show("Configuration saved");
+      setTimeout(() => setSaveStatus(null), 3000);
+    } catch {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus(null), 5000);
     }
   };
 
   const selected = products.find(p => p.id === selectedId);
+  const unimportedIds = products.filter(p => !p.imported).map(p => p.id);
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <s-page title="AI Automation Control Panel" subtitle="Autonomous product lifecycle engine">
       <div slot="primaryAction">
         {running ? (
-          <s-button variant="destructive" onClick={stopPipeline}>Stop Engine</s-button>
+          <s-button
+            variant="destructive"
+            onClick={stopPipeline}
+            disabled={actionLoading === "stop"}
+          >
+            {actionLoading === "stop" ? "Stopping…" : "Stop Engine"}
+          </s-button>
         ) : (
-          <s-button variant="primary" onClick={startPipeline}>Run Engine</s-button>
+          <s-button
+            variant="primary"
+            onClick={startPipeline}
+            disabled={actionLoading === "start"}
+          >
+            {actionLoading === "start" ? "Starting…" : "Run Engine"}
+          </s-button>
         )}
       </div>
 
       {/* Tab Navigation */}
       <s-box padding="400" background="bg-surface-secondary" borderRadius="300" style={{ marginBottom: "16px" }}>
         <s-inline gap="200">
-          <s-button
-            variant={activeTab === "control" ? "primary" : "tertiary"}
-            size="slim"
-            onClick={() => setActiveTab("control")}
-          >
-            Control Panel
-          </s-button>
-          <s-button
-            variant={activeTab === "monitoring" ? "primary" : "tertiary"}
-            size="slim"
-            onClick={() => setActiveTab("monitoring")}
-          >
-            Monitoring
-          </s-button>
-          <s-button
-            variant={activeTab === "scheduling" ? "primary" : "tertiary"}
-            size="slim"
-            onClick={() => setActiveTab("scheduling")}
-          >
-            Scheduling
-          </s-button>
-          <s-button
-            variant={activeTab === "alerts" ? "primary" : "tertiary"}
-            size="slim"
-            onClick={() => setActiveTab("alerts")}
-          >
-            Alerts
-          </s-button>
+          {["control", "monitoring", "scheduling", "alerts"].map(tab => (
+            <s-button
+              key={tab}
+              variant={activeTab === tab ? "primary" : "tertiary"}
+              size="slim"
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </s-button>
+          ))}
         </s-inline>
       </s-box>
 
       {activeTab === "control" ? (
         <>
+          {/* Error banner */}
+          {actionError && (
+            <div style={{
+              marginBottom: 16, padding: "10px 14px", borderRadius: 6, fontSize: 12,
+              background: "var(--p-color-bg-fill-critical-secondary)",
+              border: "1px solid var(--p-color-border-critical)",
+              color: "var(--p-color-text-critical)",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}>
+              <span>⚠ {actionError}</span>
+              <button
+                onClick={() => setActionError(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "inherit", padding: "0 4px" }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Preset Selection */}
           <s-card style={{ marginBottom: "16px" }}>
             <s-box padding="400">
@@ -266,7 +363,7 @@ export default function EnginePage() {
                         flex: 1, padding: "8px 10px", textAlign: "center", fontSize: 11, fontWeight: 600,
                         borderRadius: i === 0 ? "6px 0 0 6px" : i === 5 ? "0 6px 6px 0" : 0,
                         border: "1px solid",
-                        borderColor: status === "active" ? "var(--p-color-border-success)" : status === "done" ? "var(--p-color-border-success)" : "var(--p-color-border)",
+                        borderColor: status !== "pending" ? "var(--p-color-border-success)" : "var(--p-color-border)",
                         background: status === "active" ? "var(--p-color-bg-fill-success)" : status === "done" ? "var(--p-color-bg-surface-success)" : "var(--p-color-bg-surface)",
                         color: status === "pending" ? "var(--p-color-text-secondary)" : status === "active" ? "var(--p-color-text-success)" : "var(--p-color-text-secondary)",
                       }}>
@@ -289,8 +386,8 @@ export default function EnginePage() {
                 <s-box padding="400">
                   <s-inline gap="200" blockAlign="center" style={{ marginBottom: 12 }}>
                     <s-text variant="headingSm">Product Results ({products.length})</s-text>
-                    <s-button size="slim" variant="tertiary" onClick={() => setShowAdvanced(!showAdvanced)}>
-                      {showAdvanced ? "Simple" : "Advanced"}
+                    <s-button size="slim" variant="tertiary" onClick={() => setShowAdvanced(v => !v)}>
+                      {showAdvanced ? "Simple view" : "Advanced view"}
                     </s-button>
                   </s-inline>
 
@@ -303,10 +400,7 @@ export default function EnginePage() {
                           key={p.id}
                           onClick={() => setSelectedId(p.id)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              setSelectedId(p.id);
-                            }
+                            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedId(p.id); }
                           }}
                           role="button"
                           tabIndex={0}
@@ -338,6 +432,15 @@ export default function EnginePage() {
                               <span style={{ marginLeft: 8 }}>{p.margin}% margin</span>
                               <span style={{ marginLeft: 8, opacity: 0.6 }}>{p.velocity}/mo</span>
                             </div>
+                            {showAdvanced && (
+                              <div style={{ fontSize: 10, color: "var(--p-color-text-secondary)", marginTop: 3, display: "flex", gap: 10 }}>
+                                <span>MOQ: {p.moq}</span>
+                                <span>{p.supplier}</span>
+                                {p.warns?.length > 0 && (
+                                  <span style={{ color: "var(--p-color-text-critical)" }}>⚠ {p.warns.join(", ")}</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div style={{ textAlign: "right", flexShrink: 0 }}>
                             <div style={{ fontSize: 14, fontWeight: 700 }}>${getActivePrice(p).toFixed(2)}</div>
@@ -371,7 +474,7 @@ export default function EnginePage() {
               </s-card>
             </div>
 
-            {/* Right: Detail + Pricing + Actions */}
+            {/* Right: Detail + Pricing + Actions + Config */}
             <div>
               {selected ? (
                 <>
@@ -383,7 +486,9 @@ export default function EnginePage() {
                         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{selected.name}</div>
                         <div style={{ marginBottom: 8 }}>
                           <LifecycleBadge lifecycle={selected.lifecycle} />
-                          <span style={{ marginLeft: 6, fontSize: 11, padding: "1px 6px", borderRadius: 8, background: "var(--p-color-bg-fill-secondary)", color: "var(--p-color-text-secondary)" }}>{selected.cat}</span>
+                          <span style={{ marginLeft: 6, fontSize: 11, padding: "1px 6px", borderRadius: 8, background: "var(--p-color-bg-fill-secondary)", color: "var(--p-color-text-secondary)" }}>
+                            {selected.cat}
+                          </span>
                         </div>
                         <DetailTable rows={[
                           ["Sell price", "$" + selected.price.toFixed(2)],
@@ -398,7 +503,9 @@ export default function EnginePage() {
                           ["MOQ", selected.moq + " units"],
                           ["Proj. revenue", fmt$(selected.velocity * getActivePrice(selected)) + "/mo"],
                         ]} />
-                        <div style={{ fontSize: 10, color: "var(--p-color-text-secondary)", marginTop: 8 }}>Sources: {selected.sources.join(" · ")}</div>
+                        <div style={{ fontSize: 10, color: "var(--p-color-text-secondary)", marginTop: 8 }}>
+                          Sources: {selected.sources.join(" · ")}
+                        </div>
                       </div>
                     </s-box>
                   </s-card>
@@ -418,10 +525,7 @@ export default function EnginePage() {
                             key={pm.mode}
                             onClick={() => setPriceMode(selected.id, pm.mode)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                setPriceMode(selected.id, pm.mode);
-                              }
+                              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPriceMode(selected.id, pm.mode); }
                             }}
                             role="button"
                             tabIndex={0}
@@ -445,17 +549,38 @@ export default function EnginePage() {
                     <s-box padding="400">
                       <s-text variant="headingSm">Actions</s-text>
                       <s-inline gap="200" style={{ marginTop: 8 }}>
-                        <s-button size="slim" onClick={() => negotiateProduct(selected.id)} disabled={selected.negState >= 5}>
-                          Re-negotiate
+                        <s-button
+                          size="slim"
+                          onClick={() => negotiateProduct(selected.id)}
+                          disabled={selected.negState >= 5 || actionLoading === `negotiate-${selected.id}`}
+                        >
+                          {actionLoading === `negotiate-${selected.id}` ? "Negotiating…" : "Re-negotiate"}
                         </s-button>
-                        <s-button size="slim" variant="primary" onClick={() => importProducts([selected.id])} disabled={selected.imported}>
-                          Import to store
+                        <s-button
+                          size="slim"
+                          variant="primary"
+                          onClick={() => importProducts([selected.id])}
+                          disabled={selected.imported || actionLoading === "import"}
+                        >
+                          {selected.imported ? "Imported" : "Import to store"}
                         </s-button>
                       </s-inline>
-                      {products.filter(p => !p.imported).length > 0 && (
-                        <div style={{ marginTop: 8 }}>
-                          <s-button size="slim" onClick={() => importProducts(products.filter(p => !p.imported).map(p => p.id))}>
-                            Import all ({products.filter(p => !p.imported).length})
+                      {unimportedIds.length > 0 && (
+                        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                          <s-button
+                            size="slim"
+                            onClick={() => importProducts(unimportedIds)}
+                            disabled={actionLoading === "import"}
+                          >
+                            {actionLoading === "import" ? "Importing…" : `Import all (${unimportedIds.length})`}
+                          </s-button>
+                          <s-button
+                            size="slim"
+                            variant="tertiary"
+                            onClick={() => createDropFromProducts(unimportedIds)}
+                            disabled={actionLoading === "createDrop"}
+                          >
+                            {actionLoading === "createDrop" ? "Creating…" : `Create Drop (${unimportedIds.length})`}
                           </s-button>
                         </div>
                       )}
@@ -466,6 +591,18 @@ export default function EnginePage() {
                 <s-card>
                   <s-box padding="400">
                     <s-text tone="subdued">Select a product to view details, pricing, and actions.</s-text>
+                    {unimportedIds.length > 0 && (
+                      <div style={{ marginTop: 12 }}>
+                        <s-button
+                          size="slim"
+                          variant="tertiary"
+                          onClick={() => createDropFromProducts(unimportedIds)}
+                          disabled={actionLoading === "createDrop"}
+                        >
+                          {actionLoading === "createDrop" ? "Creating…" : `Create Drop (${unimportedIds.length})`}
+                        </s-button>
+                      </div>
+                    )}
                   </s-box>
                 </s-card>
               )}
@@ -485,9 +622,22 @@ export default function EnginePage() {
                     <ConfigToggle label="Death predictor" checked={config.deathPredictor} onChange={v => setConfig(c => ({ ...c, deathPredictor: v }))} />
                     <ConfigToggle label="Surge pricing" checked={config.surgeEnabled} onChange={v => setConfig(c => ({ ...c, surgeEnabled: v }))} />
                   </div>
-                  <s-button variant="primary" size="slim" style={{ marginTop: "12px" }} onClick={saveConfiguration}>
-                    Save Configuration
-                  </s-button>
+                  <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                    <s-button
+                      variant="primary"
+                      size="slim"
+                      onClick={saveConfiguration}
+                      disabled={saveStatus === "saving"}
+                    >
+                      {saveStatus === "saving" ? "Saving…" : "Save Configuration"}
+                    </s-button>
+                    {saveStatus === "saved" && (
+                      <span style={{ fontSize: 11, color: "var(--p-color-text-success)" }}>✓ Saved</span>
+                    )}
+                    {saveStatus === "error" && (
+                      <span style={{ fontSize: 11, color: "var(--p-color-text-critical)" }}>Save failed</span>
+                    )}
+                  </div>
                 </s-box>
               </s-card>
             </div>
