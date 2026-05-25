@@ -46,22 +46,40 @@ export function EditForm({ drop, fetcher, onCancel }) {
             style={{ ...inputStyle, resize: "vertical" }}
           />
         </div>
-        <div>
-          <label htmlFor="scheduledAt" style={labelStyle}>
-            Scheduled Date & Time
-          </label>
-          <input
-            id="scheduledAt"
-            name="scheduledAt"
-            type="datetime-local"
-            defaultValue={
-              drop.scheduledAt
-                ? new Date(drop.scheduledAt).toISOString().slice(0, 16)
-                : ""
-            }
-            style={inputStyle}
-          />
-        </div>
+        <s-stack direction="inline" gap="base">
+          <div style={{ flex: 1 }}>
+            <label htmlFor="scheduledAt" style={labelStyle}>
+              Start Date & Time
+            </label>
+            <input
+              id="scheduledAt"
+              name="scheduledAt"
+              type="datetime-local"
+              defaultValue={
+                drop.scheduledAt
+                  ? new Date(drop.scheduledAt).toISOString().slice(0, 16)
+                  : ""
+              }
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label htmlFor="scheduledEndAt" style={labelStyle}>
+              End Date & Time <span style={{ fontWeight: 400, color: "#6d7175" }}>(auto-complete)</span>
+            </label>
+            <input
+              id="scheduledEndAt"
+              name="scheduledEndAt"
+              type="datetime-local"
+              defaultValue={
+                drop.scheduledEndAt
+                  ? new Date(drop.scheduledEndAt).toISOString().slice(0, 16)
+                  : ""
+              }
+              style={inputStyle}
+            />
+          </div>
+        </s-stack>
         <s-stack direction="inline" gap="base">
           <s-button
             type="submit"

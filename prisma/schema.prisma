@@ -33,17 +33,19 @@ model Drop {
   title       String
   description String        @default("")
   status      String        @default("DRAFT")
-  scheduledAt DateTime?
-  startedAt   DateTime?
-  endedAt     DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  products    DropProduct[]
+  scheduledAt    DateTime?
+  scheduledEndAt DateTime?
+  startedAt      DateTime?
+  endedAt        DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  products       DropProduct[]
 
   @@index([shop, status])
   @@index([shop, scheduledAt])
   @@index([shop, createdAt])
   @@index([status, scheduledAt])
+  @@index([status, scheduledEndAt])
 }
 
 model DropProduct {

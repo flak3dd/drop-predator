@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/drops-tick",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

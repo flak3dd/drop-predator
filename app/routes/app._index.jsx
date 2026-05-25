@@ -1,94 +1,16 @@
 import { useLoaderData, useNavigate } from "react-router";
-import { useEffect } from "react";
-import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
 export const loader = async ({ request }) => {
-  const { session, admin } = await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
   const shop = session.shop;
 
   const settings = await prisma.setting.findUnique({ where: { shop } });
+  const now = new Date();
 
-  let autoActivated = [];
-  if (settings?.autoActivate) {
-    const overdue = await prisma.drop.findMany({
-      where: {
-        shop,
-        status: "SCHEDULED",
-        scheduledAt: { lte: new Date() },
-      },
-      include: { products: true },
-    });
-
-    for (const drop of overdue) {
-      for (const dp of drop.products) {
-        if (dp.dropPrice && dp.productId) {
-          try {
-            const res = await admin.graphql(
-              `#graphql
-              query getProduct($id: ID!) {
-                product(id: $id) {
-                  variants(first: 100) {
-                    edges { node { id price } }
-                  }
-                }
-              }`,
-              { variables: { id: dp.productId } },
-            );
-            const data = await res.json();
-            const variants = data.data?.product?.variants?.edges || [];
-
-            if (variants.length > 0) {
-              await prisma.dropProduct.update({
-                where: { id: dp.id },
-                data: {
-                  originalPrice: JSON.stringify(
-                    variants.map((v) => ({
-                      variantId: v.node.id,
-                      price: v.node.price,
-                    })),
-                  ),
-                },
-              });
-
-              await admin.graphql(
-                `#graphql
-                mutation updateVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-                  productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-                    productVariants { id price }
-                  }
-                }`,
-                {
-                  variables: {
-                    productId: dp.productId,
-                    variants: variants.map((v) => ({
-                      id: v.node.id,
-                      price: dp.dropPrice,
-                    })),
-                  },
-                },
-              );
-            }
-          } catch (e) {
-            console.error(
-              `Auto-activate price sync failed for ${dp.productId}:`,
-              e,
-            );
-          }
-        }
-      }
-
-      await prisma.drop.update({
-        where: { id: drop.id },
-        data: { status: "ACTIVE", startedAt: new Date() },
-      });
-      autoActivated.push(drop.title);
-    }
-  }
-
-  const [totalDrops, activeDrops, scheduledDrops, completedDrops, recentDrops] =
+  const [totalDrops, activeDrops, scheduledDrops, completedDrops, recentDrops, overdueCount, endingSoonCount] =
     await Promise.all([
       prisma.drop.count({ where: { shop } }),
       prisma.drop.count({ where: { shop, status: "ACTIVE" } }),
@@ -100,23 +22,29 @@ export const loader = async ({ request }) => {
         take: 5,
         include: { _count: { select: { products: true } } },
       }),
-    ]);
-
-  const overdueCount = settings?.autoActivate
-    ? 0
-    : await prisma.drop.count({
+      // Drops past their scheduled start but still SCHEDULED (needs manual or cron activation)
+      prisma.drop.count({
+        where: { shop, status: "SCHEDULED", scheduledAt: { lte: now } },
+      }),
+      // ACTIVE drops with a scheduled end within the next hour
+      prisma.drop.count({
         where: {
           shop,
-          status: "SCHEDULED",
-          scheduledAt: { lte: new Date() },
+          status: "ACTIVE",
+          scheduledEndAt: {
+            not: null,
+            lte: new Date(now.getTime() + 60 * 60 * 1000),
+            gte: now,
+          },
         },
-      });
+      }),
+    ]);
 
   return {
     stats: { totalDrops, activeDrops, scheduledDrops, completedDrops },
     recentDrops,
-    autoActivated,
-    overdueCount,
+    overdueCount: settings?.autoActivate ? 0 : overdueCount,
+    endingSoonCount,
     hasAutoActivate: !!settings?.autoActivate,
   };
 };
@@ -130,22 +58,8 @@ const STATUS_LABELS = {
 };
 
 export default function Dashboard() {
-  const {
-    stats,
-    recentDrops,
-    autoActivated,
-    overdueCount,
-  } = useLoaderData();
+  const { stats, recentDrops, overdueCount, endingSoonCount } = useLoaderData();
   const navigate = useNavigate();
-  const shopify = useAppBridge();
-
-  useEffect(() => {
-    if (autoActivated.length > 0) {
-      shopify.toast.show(
-        `Auto-activated ${autoActivated.length} drop${autoActivated.length !== 1 ? "s" : ""}`,
-      );
-    }
-  }, [autoActivated, shopify]);
 
   return (
     <s-page heading="Drop Predator">
@@ -188,20 +102,19 @@ export default function Dashboard() {
         </s-section>
       )}
 
-      {autoActivated.length > 0 && (
+      {endingSoonCount > 0 && (
         <s-section>
-          <s-box
-            padding="base"
-            borderWidth="base"
-            borderRadius="base"
-            background="subdued"
-          >
-            <s-stack direction="block" gap="tight">
-              <s-text type="strong">
-                Auto-activated {autoActivated.length} drop
-                {autoActivated.length !== 1 ? "s" : ""}
-              </s-text>
-              <s-text>{autoActivated.join(", ")}</s-text>
+          <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
+            <s-stack direction="inline" gap="base">
+              <s-stack direction="block" gap="tight" style={{ flex: 1 }}>
+                <s-text type="strong">
+                  {endingSoonCount} active drop{endingSoonCount !== 1 ? "s" : ""} ending within the hour
+                </s-text>
+                <s-text>Prices will be automatically reverted when the scheduled end time passes.</s-text>
+              </s-stack>
+              <s-button variant="tertiary" onClick={() => navigate("/app/drops?status=ACTIVE")}>
+                View Active
+              </s-button>
             </s-stack>
           </s-box>
         </s-section>

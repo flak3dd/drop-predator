@@ -139,6 +139,7 @@ export const action = async ({ request, params }) => {
       const description =
         formData.get("description")?.toString().trim() || "";
       const scheduledAt = formData.get("scheduledAt")?.toString() || "";
+      const scheduledEndAt = formData.get("scheduledEndAt")?.toString() || "";
 
       if (!title) return { error: "Title is required" };
 
@@ -150,6 +151,7 @@ export const action = async ({ request, params }) => {
           title,
           description,
           scheduledAt: hasSchedule ? new Date(scheduledAt) : null,
+          scheduledEndAt: scheduledEndAt.length > 0 ? new Date(scheduledEndAt) : null,
           status:
             hasSchedule && drop.status === "DRAFT"
               ? "SCHEDULED"
@@ -482,8 +484,14 @@ export default function DropDetail() {
             )}
             {drop.scheduledAt && (
               <InfoRow
-                label="Scheduled"
+                label="Starts"
                 value={new Date(drop.scheduledAt).toLocaleString()}
+              />
+            )}
+            {drop.scheduledEndAt && (
+              <InfoRow
+                label="Ends"
+                value={new Date(drop.scheduledEndAt).toLocaleString()}
               />
             )}
             {drop.startedAt && (
