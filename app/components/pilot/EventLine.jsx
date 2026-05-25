@@ -1,4 +1,3 @@
-import PropTypes from "prop-types";
 import { LogTag } from "../engine-ui";
 
 export function EventLine({ event }) {
@@ -37,6 +36,3 @@ export function EventLine({ event }) {
   );
 }
 
-EventLine.propTypes = {
-  event: PropTypes.object.isRequired,
-};

@@ -1,4 +1,3 @@
-import PropTypes from "prop-types";
 import { ConfigSlider, ConfigToggle } from "../engine-ui";
 
 export function AlertsConfig({ alerts, setAlerts }) {
@@ -77,7 +76,3 @@ export function AlertsConfig({ alerts, setAlerts }) {
   );
 }
 
-AlertsConfig.propTypes = {
-  alerts: PropTypes.object.isRequired,
-  setAlerts: PropTypes.func.isRequired,
-};

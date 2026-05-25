@@ -6,7 +6,6 @@
  * for reuse across the app.
  */
 
-import PropTypes from "prop-types";
 
 // ─── StatCard ───────────────────────────────────────────────────────────────
 
@@ -36,11 +35,6 @@ export function StatCard({ label, value, color = "info" }) {
   );
 }
 
-StatCard.propTypes = {
-  label: PropTypes.string.isRequired,
-  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-  color: PropTypes.oneOf(["info", "success", "warning", "critical"]),
-};
 
 // ─── ConfigSlider ───────────────────────────────────────────────────────────
 
@@ -64,15 +58,6 @@ export function ConfigSlider({ label, value, min, max, step, suffix = "", onChan
   );
 }
 
-ConfigSlider.propTypes = {
-  label: PropTypes.string.isRequired,
-  value: PropTypes.number.isRequired,
-  min: PropTypes.number.isRequired,
-  max: PropTypes.number.isRequired,
-  step: PropTypes.number.isRequired,
-  suffix: PropTypes.string,
-  onChange: PropTypes.func.isRequired,
-};
 
 // ─── ConfigToggle ───────────────────────────────────────────────────────────
 
@@ -118,11 +103,6 @@ export function ConfigToggle({ label, checked, onChange }) {
   );
 }
 
-ConfigToggle.propTypes = {
-  label: PropTypes.string.isRequired,
-  checked: PropTypes.bool.isRequired,
-  onChange: PropTypes.func.isRequired,
-};
 
 // ─── DetailTable ────────────────────────────────────────────────────────────
 
@@ -144,9 +124,6 @@ export function DetailTable({ rows }) {
   );
 }
 
-DetailTable.propTypes = {
-  rows: PropTypes.arrayOf(PropTypes.array).isRequired,
-};
 
 // ─── LifecycleBadge ─────────────────────────────────────────────────────────
 
@@ -176,9 +153,6 @@ export function LifecycleBadge({ lifecycle }) {
   );
 }
 
-LifecycleBadge.propTypes = {
-  lifecycle: PropTypes.string.isRequired,
-};
 
 // ─── LogTag ─────────────────────────────────────────────────────────────────
 
@@ -212,7 +186,3 @@ export function LogTag({ tag, cls }) {
   );
 }
 
-LogTag.propTypes = {
-  tag: PropTypes.string.isRequired,
-  cls: PropTypes.string,
-};

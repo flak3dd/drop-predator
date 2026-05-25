@@ -1,4 +1,3 @@
-import PropTypes from "prop-types";
 
 const smallInputStyle = {
   width: 65,
@@ -119,26 +118,3 @@ export function ProductCard({ product, liveData, fetcher, readonly }) {
   );
 }
 
-ProductCard.propTypes = {
-  product: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    productId: PropTypes.string.isRequired,
-    productTitle: PropTypes.string.isRequired,
-    productImage: PropTypes.string,
-    allocatedQuantity: PropTypes.number.isRequired,
-    dropPrice: PropTypes.string,
-    originalPrice: PropTypes.string,
-  }).isRequired,
-  liveData: PropTypes.shape({
-    image: PropTypes.string,
-    minPrice: PropTypes.string,
-    maxPrice: PropTypes.string,
-    currency: PropTypes.string,
-    totalInventory: PropTypes.number,
-    status: PropTypes.string,
-  }),
-  fetcher: PropTypes.shape({
-    submit: PropTypes.func.isRequired,
-  }).isRequired,
-  readonly: PropTypes.bool,
-};

@@ -1,4 +1,3 @@
-import PropTypes from "prop-types";
 import { ConfigSlider, ConfigToggle } from "../engine-ui";
 
 export function SchedulingConfig({ scheduling, setScheduling }) {
@@ -68,7 +67,3 @@ export function SchedulingConfig({ scheduling, setScheduling }) {
   );
 }
 
-SchedulingConfig.propTypes = {
-  scheduling: PropTypes.object.isRequired,
-  setScheduling: PropTypes.func.isRequired,
-};

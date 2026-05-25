@@ -1,5 +1,3 @@
-import PropTypes from "prop-types";
-
 const labelStyle = {
   display: "block",
   fontWeight: 600,
@@ -80,18 +78,3 @@ export function EditForm({ drop, fetcher, onCancel }) {
     </fetcher.Form>
   );
 }
-
-EditForm.propTypes = {
-  drop: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    title: PropTypes.string.isRequired,
-    description: PropTypes.string,
-    scheduledAt: PropTypes.string,
-  }).isRequired,
-  fetcher: PropTypes.shape({
-    state: PropTypes.string.isRequired,
-    Form: PropTypes.func.isRequired,
-    submit: PropTypes.func.isRequired,
-  }).isRequired,
-  onCancel: PropTypes.func.isRequired,
-};

@@ -1,4 +1,3 @@
-import PropTypes from "prop-types";
 import { LifecycleBadge } from "../engine-ui";
 import { fmt$ } from "../../lib/format";
 
@@ -22,12 +21,6 @@ function MetricRow({ label, value, total, suffix = "" }) {
   );
 }
 
-MetricRow.propTypes = {
-  label: PropTypes.string.isRequired,
-  value: PropTypes.number.isRequired,
-  total: PropTypes.number,
-  suffix: PropTypes.string,
-};
 
 function StatusBadge({ running }) {
   return (
@@ -41,9 +34,6 @@ function StatusBadge({ running }) {
   );
 }
 
-StatusBadge.propTypes = {
-  running: PropTypes.bool.isRequired,
-};
 
 export function MonitoringDashboard({ stats, products, running }) {
   const highScoringProducts = products.filter(p => p.score >= 80).length;
@@ -110,8 +100,3 @@ export function MonitoringDashboard({ stats, products, running }) {
   );
 }
 
-MonitoringDashboard.propTypes = {
-  stats: PropTypes.object.isRequired,
-  products: PropTypes.array.isRequired,
-  running: PropTypes.bool.isRequired,
-};

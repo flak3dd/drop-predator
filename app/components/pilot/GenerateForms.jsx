@@ -5,7 +5,6 @@
  */
 
 import { useState } from "react";
-import PropTypes from "prop-types";
 
 const formInput = {
   width: "100%",
@@ -56,7 +55,6 @@ export function ListingForm({ onSubmit, loading }) {
   );
 }
 
-ListingForm.propTypes = { onSubmit: PropTypes.func.isRequired, loading: PropTypes.bool };
 
 // ─── Description Form ──────────────────────────────────────────────────────
 
@@ -90,7 +88,6 @@ export function DescriptionForm({ onSubmit, loading }) {
   );
 }
 
-DescriptionForm.propTypes = { onSubmit: PropTypes.func.isRequired, loading: PropTypes.bool };
 
 // ─── Shipping Form ─────────────────────────────────────────────────────────
 
@@ -115,7 +112,6 @@ export function ShippingForm({ onSubmit, loading }) {
   );
 }
 
-ShippingForm.propTypes = { onSubmit: PropTypes.func.isRequired, loading: PropTypes.bool };
 
 // ─── Email Form ────────────────────────────────────────────────────────────
 
@@ -147,7 +143,6 @@ export function EmailForm({ onSubmit, loading }) {
   );
 }
 
-EmailForm.propTypes = { onSubmit: PropTypes.func.isRequired, loading: PropTypes.bool };
 
 // ─── Image Search Form ─────────────────────────────────────────────────────
 
@@ -235,4 +230,3 @@ export function ImageSearchForm({ onSubmit, loading }) {
   );
 }
 
-ImageSearchForm.propTypes = { onSubmit: PropTypes.func.isRequired, loading: PropTypes.bool };

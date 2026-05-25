@@ -1,4 +1,3 @@
-import PropTypes from "prop-types";
 
 export function InfoRow({ label, value }) {
   return (
@@ -9,7 +8,3 @@ export function InfoRow({ label, value }) {
   );
 }
 
-InfoRow.propTypes = {
-  label: PropTypes.string.isRequired,
-  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-};
