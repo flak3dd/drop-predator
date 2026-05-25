@@ -204,16 +204,18 @@ export async function negotiateProduct(shop, productId) {
 
   const deal = await negotiateSupplier(toUiProduct(product));
 
+  const finalMoq = deal.moq || product.moq;
   await prisma.engineProduct.update({
     where: { id: productId },
     data: {
       discount: deal.discount,
       landedCost: deal.landed,
       margin: deal.margin,
-      moq: deal.moq || product.moq,
+      moq: finalMoq,
       negState: 5,
       aiNegotiated: deal.aiPowered || false,
       discountImproved: Math.max(0, deal.discount - product.discount),
+      moqImproved: Math.max(0, product.moq - finalMoq),
     },
   });
 
@@ -318,16 +320,18 @@ async function runPipeline(runId, shop, niche, config) {
           where: { engineRunId: runId, sourceId: p.id },
         });
         if (dbProd) {
+          const finalMoq = deal.moq || dbProd.moq;
           await prisma.engineProduct.update({
             where: { id: dbProd.id },
             data: {
               discount: deal.discount,
               landedCost: deal.landed,
               margin: deal.margin,
-              moq: deal.moq || dbProd.moq,
+              moq: finalMoq,
               negState: 5,
               aiNegotiated: deal.aiPowered || false,
               discountImproved: Math.max(0, deal.discount - dbProd.discount),
+              moqImproved: Math.max(0, dbProd.moq - finalMoq),
             },
           });
         }

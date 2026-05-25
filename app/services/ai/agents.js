@@ -23,6 +23,20 @@ function makeResult(agent, result, toolCalls) {
   };
 }
 
+/**
+ * onStepFinish handler compatible with AI SDK v5.
+ * In v5, toolResults is a separate array keyed by toolCallId.
+ * Merges calls + results into the shared toolCalls accumulator.
+ */
+function makeStepHandler(toolCalls) {
+  return ({ toolCalls: calls, toolResults: results }) => {
+    calls?.forEach(c => {
+      const res = results?.find(r => r.toolCallId === c.toolCallId);
+      toolCalls.push({ tool: c.toolName, input: c.args, result: res?.result });
+    });
+  };
+}
+
 // ─── 1. Product Listing Agent ───────────────────────────────────────────────
 
 export async function runProductAgent(task, admin) {
@@ -55,13 +69,7 @@ Only publish after SEO fields are applied. Report what you did.`,
       bulkUpdateTags: tools.bulkUpdateTags,
     },
     maxSteps: 8,
-    onStepFinish: ({ toolCalls: calls }) => {
-      calls?.forEach(c => toolCalls.push({
-        tool: c.toolName,
-        input: c.args,
-        result: c.result,
-      }));
-    },
+    onStepFinish: makeStepHandler(toolCalls),
   });
 
   return makeResult('ProductAgent', result, toolCalls);
@@ -96,13 +104,7 @@ Sign off as "Drop Predator Store Team".`,
       classifyEmailUrgency: tools.classifyEmailUrgency,
     },
     maxSteps: 12,
-    onStepFinish: ({ toolCalls: calls }) => {
-      calls?.forEach(c => toolCalls.push({
-        tool: c.toolName,
-        input: c.args,
-        result: c.result,
-      }));
-    },
+    onStepFinish: makeStepHandler(toolCalls),
   });
 
   return makeResult('EmailAgent', result, toolCalls);
@@ -133,13 +135,7 @@ When asked to configure shipping:
       getShippingRules: tools.getShippingRules,
     },
     maxSteps: 10,
-    onStepFinish: ({ toolCalls: calls }) => {
-      calls?.forEach(c => toolCalls.push({
-        tool: c.toolName,
-        input: c.args,
-        result: c.result,
-      }));
-    },
+    onStepFinish: makeStepHandler(toolCalls),
   });
 
   return makeResult('ShippingAgent', result, toolCalls);
@@ -171,13 +167,7 @@ Be specific with quantities and product names.`,
       getStoreMetrics: tools.getStoreMetrics,
     },
     maxSteps: 6,
-    onStepFinish: ({ toolCalls: calls }) => {
-      calls?.forEach(c => toolCalls.push({
-        tool: c.toolName,
-        input: c.args,
-        result: c.result,
-      }));
-    },
+    onStepFinish: makeStepHandler(toolCalls),
   });
 
   return makeResult('InventoryAgent', result, toolCalls);
@@ -252,13 +242,7 @@ and which ones you attached or recommend.`,
       getProducts: shopifyTools.getProducts,
     },
     maxSteps: 15,
-    onStepFinish: ({ toolCalls: calls }) => {
-      calls?.forEach(c => toolCalls.push({
-        tool: c.toolName,
-        input: c.args,
-        result: c.result,
-      }));
-    },
+    onStepFinish: makeStepHandler(toolCalls),
   });
 
   return makeResult('MediaAgent', result, toolCalls);

@@ -16,6 +16,7 @@ export const action = async ({ request }) => {
   const title = formData.get("title")?.toString().trim();
   const description = formData.get("description")?.toString().trim() || "";
   const scheduledAt = formData.get("scheduledAt")?.toString() || "";
+  const scheduledEndAt = formData.get("scheduledEndAt")?.toString() || "";
 
   if (!title) {
     return { error: "Title is required" };
@@ -30,6 +31,7 @@ export const action = async ({ request }) => {
       description,
       status: hasSchedule ? "SCHEDULED" : "DRAFT",
       scheduledAt: hasSchedule ? new Date(scheduledAt) : null,
+      scheduledEndAt: scheduledEndAt.length > 0 ? new Date(scheduledEndAt) : null,
     },
   });
 
@@ -112,33 +114,52 @@ export default function NewDrop() {
               />
             </div>
 
-            <div>
-              <label
-                htmlFor="scheduledAt"
-                style={{
-                  display: "block",
-                  fontWeight: 600,
-                  marginBottom: 4,
-                  fontSize: 13,
-                }}
-              >
-                Scheduled Date & Time{" "}
-                <span style={{ fontWeight: 400, color: "#6d7175" }}>
-                  (leave blank to save as draft)
-                </span>
-              </label>
-              <input
-                id="scheduledAt"
-                name="scheduledAt"
-                type="datetime-local"
-                style={{
-                  padding: "8px 12px",
-                  border: "1px solid var(--p-color-border, #8c9196)",
-                  borderRadius: 8,
-                  fontSize: 14,
-                }}
-              />
-            </div>
+            <s-stack direction="inline" gap="base">
+              <div style={{ flex: 1 }}>
+                <label
+                  htmlFor="scheduledAt"
+                  style={{ display: "block", fontWeight: 600, marginBottom: 4, fontSize: 13 }}
+                >
+                  Start Date & Time{" "}
+                  <span style={{ fontWeight: 400, color: "#6d7175" }}>(blank = draft)</span>
+                </label>
+                <input
+                  id="scheduledAt"
+                  name="scheduledAt"
+                  type="datetime-local"
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px solid var(--p-color-border, #8c9196)",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label
+                  htmlFor="scheduledEndAt"
+                  style={{ display: "block", fontWeight: 600, marginBottom: 4, fontSize: 13 }}
+                >
+                  End Date & Time{" "}
+                  <span style={{ fontWeight: 400, color: "#6d7175" }}>(auto-complete)</span>
+                </label>
+                <input
+                  id="scheduledEndAt"
+                  name="scheduledEndAt"
+                  type="datetime-local"
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    border: "1px solid var(--p-color-border, #8c9196)",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            </s-stack>
           </s-stack>
         </s-section>
 

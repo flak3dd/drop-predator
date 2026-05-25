@@ -158,7 +158,7 @@ export async function action({ request }) {
         const result = await importListings(toImport, admin);
 
         for (const r of result.results) {
-          if (r.ok) {
+          if (r.ok && r.shopifyId) {
             const p = toImport.find(x => x.id === r.id);
             await prisma.dropProduct.create({
               data: {

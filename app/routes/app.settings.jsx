@@ -87,9 +87,8 @@ export default function Settings() {
                   </label>
                   <s-text>
                     Automatically activate drops when their scheduled
-                    time passes. Checked each time you visit the
-                    dashboard. Prices will be synced to Shopify on
-                    activation.
+                    time passes. Checked every 5 minutes via scheduled
+                    task. Prices will be synced to Shopify on activation.
                   </s-text>
                 </s-stack>
               </s-stack>
