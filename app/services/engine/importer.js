@@ -74,19 +74,23 @@ async function importToShopifyAdmin(products, admin) {
 
 async function saveListingToDatabase(product, listing) {
   try {
-    // Find the engine product by source ID
-    const engineProduct = await prisma.engineProduct.findUnique({
-      where: { sourceId: product.id },
-    });
-
-    if (!engineProduct) {
-      console.error('Engine product not found for source ID:', product.id);
-      return;
-    }
-
-    await prisma.productListing.create({
-      data: {
-        engineProductId: engineProduct.id,
+    // product.id is the EngineProduct DB UUID — use it directly
+    await prisma.productListing.upsert({
+      where: { engineProductId: product.id },
+      update: {
+        title: listing.title,
+        description: listing.description,
+        descriptionHtml: listing.descriptionHtml,
+        bulletPoints: JSON.stringify(listing.bulletPoints || []),
+        seoTags: JSON.stringify(listing.seoTags || []),
+        metaDescription: listing.metaDescription,
+        collections: JSON.stringify(listing.collections || []),
+        pricingCopy: listing.pricingCopy,
+        productType: listing.productType,
+        aiGenerated: listing.aiGenerated || false,
+      },
+      create: {
+        engineProductId: product.id,
         title: listing.title,
         description: listing.description,
         descriptionHtml: listing.descriptionHtml,
@@ -104,15 +108,12 @@ async function saveListingToDatabase(product, listing) {
   }
 }
 
-async function markProductAsImported(sourceId, shopifyProductId) {
+async function markProductAsImported(productId, shopifyProductId) {
+  // productId is the EngineProduct DB UUID
   try {
-    await prisma.engineProduct.updateMany({
-      where: { sourceId },
-      data: {
-        imported: true,
-        shopifyProductId,
-        updatedAt: new Date(),
-      },
+    await prisma.engineProduct.update({
+      where: { id: productId },
+      data: { imported: true, shopifyProductId },
     });
   } catch (err) {
     console.error('Failed to mark product as imported:', err.message);

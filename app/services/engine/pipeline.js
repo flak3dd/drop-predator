@@ -1,4 +1,15 @@
 /* eslint-disable no-undef */
+/**
+ * engine/pipeline.js
+ *
+ * All persistent state lives in the DB (EngineRun + EngineProduct).
+ * The in-memory `activePipelines` Set is only a per-invocation guard
+ * against double-starts; it is NOT the source-of-truth for status.
+ *
+ * Status polls (getEngineStatus) always read from DB so they work
+ * correctly across Vercel serverless invocations.
+ */
+
 import { scoutProducts } from './scout.js';
 import { negotiateSupplier } from './negotiate.js';
 import { computePricing, getActivePrice } from './price.js';
@@ -6,319 +17,456 @@ import { importListings } from './importer.js';
 import { getProducts } from '../../data/products.js';
 import prisma from '../../db.server.js';
 
-const runs = new Map();
+// ─── Per-invocation guard only ─────────────────────────────────────────────
+const activePipelines = new Set();
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
 
 function calcAvgMargin(products) {
   if (!products.length) return 0;
   return Math.round(products.reduce((a, p) => a + p.margin, 0) / products.length);
 }
 
-export function getEngineRun(shop) {
-  return runs.get(shop) || null;
+/** Map a DB EngineProduct row → the shape the UI/API expects. */
+function toUiProduct(p) {
+  return {
+    id: p.id,
+    sourceId: p.sourceId,
+    name: p.name,
+    cat: p.category,
+    score: p.score,
+    margin: p.margin,
+    price: p.price,
+    cost: p.cost,
+    landed: p.landedCost,
+    velocity: p.velocity,
+    trend: p.trend,
+    lifecycle: p.lifecycle,
+    competition: p.competition,
+    supplier: p.supplier,
+    supScore: p.supplierScore,
+    moq: p.moq,
+    discount: p.discount,
+    sources: (() => { try { return JSON.parse(p.sources); } catch { return []; } })(),
+    searches: p.searches,
+    impulse: p.impulse,
+    warns: (() => { try { return JSON.parse(p.warnings); } catch { return []; } })(),
+    negState: p.negState,
+    activePrice: p.activePrice,
+    imported: p.imported,
+    aiPowered: p.aiNegotiated,
+    shopifyProductId: p.shopifyProductId,
+    discountImproved: p.discountImproved,
+    moqImproved: p.moqImproved,
+  };
 }
 
-export function getEngineProducts(niche) {
-  return getProducts(niche);
+// ─── DB write helpers (non-throwing) ──────────────────────────────────────
+
+async function dbSetPhase(runId, phase, phaseSub) {
+  await prisma.engineRun.update({
+    where: { id: runId },
+    data: { phase, phaseSub: phaseSub || '' },
+  }).catch(() => {});
 }
 
-export function stopEngine(shop) {
-  const run = runs.get(shop);
-  if (!run) return;
-  run.running = false;
-  run.intervals.forEach(clearInterval);
-  run.intervals = [];
+let _logFlushTimer = null;
+const _pendingLogs = new Map(); // runId → { logs: [], timer }
 
-  // Update database record
-  if (run.engineRunId) {
-    prisma.engineRun.update({
-      where: { id: run.engineRunId },
-      data: {
-        status: 'STOPPED',
-        endedAt: new Date(),
-        phase: run.phase,
-      },
-    }).catch(() => {}); // Non-critical
+async function dbLog(runId, tag, msg, cls) {
+  if (!_pendingLogs.has(runId)) {
+    _pendingLogs.set(runId, { logs: [] });
+  }
+  const entry = _pendingLogs.get(runId);
+  entry.logs.push({ tag, msg, cls: cls || tag.toLowerCase(), ts: Date.now() });
+
+  // Flush when batch is large enough
+  if (entry.logs.length >= 10) {
+    await flushLogs(runId);
   }
 }
 
-export async function startEngine(shop, niche, config = {}) {
-  stopEngine(shop);
+async function flushLogs(runId) {
+  const entry = _pendingLogs.get(runId);
+  if (!entry || entry.logs.length === 0) return;
+  const toWrite = entry.logs.splice(0);
 
-  // Load settings and merge with config
+  try {
+    const run = await prisma.engineRun.findUnique({
+      where: { id: runId },
+      select: { logs: true },
+    });
+    const existing = (() => { try { return JSON.parse(run?.logs || '[]'); } catch { return []; } })();
+    const combined = [...existing, ...toWrite].slice(-200); // keep last 200
+    await prisma.engineRun.update({
+      where: { id: runId },
+      data: { logs: JSON.stringify(combined) },
+    });
+  } catch { /* non-critical */ }
+}
+
+async function dbIsStopped(runId) {
+  const run = await prisma.engineRun.findUnique({
+    where: { id: runId },
+    select: { status: true },
+  }).catch(() => null);
+  return !run || run.status === 'STOPPED';
+}
+
+// ─── Public API ────────────────────────────────────────────────────────────
+
+export async function getEngineProducts(niche) {
+  return getProducts(niche);
+}
+
+export async function startEngine(shop, niche, config = {}) {
+  await stopEngine(shop);
+
   const settings = await prisma.setting.findUnique({ where: { shop } });
   const settingsConfig = settings?.engineConfig ? JSON.parse(settings.engineConfig) : {};
   const mergedConfig = { ...settingsConfig, ...config };
 
-  // Create database record for engine run
   const engineRun = await prisma.engineRun.create({
     data: {
       shop,
       niche,
       status: 'RUNNING',
       phase: 0,
+      phaseSub: 'starting…',
       config: JSON.stringify(mergedConfig),
     },
   });
 
-  const run = {
-    id: engineRun.id,
-    shop,
-    niche,
-    running: true,
-    phase: 0,
-    products: [],
-    dealsClosed: 0,
-    sessionRev: 0,
-    log: [],
-    intervals: [],
-    startedAt: Date.now(),
-    config: mergedConfig,
-    engineRunId: engineRun.id,
-  };
+  activePipelines.add(shop);
 
-  runs.set(shop, run);
+  // Fire-and-forget: the pipeline continues running in the same
+  // Vercel Fluid Compute invocation after the HTTP response is sent.
+  runPipeline(engineRun.id, shop, niche, mergedConfig)
+    .catch(err => console.error(`[engine] Pipeline error ${shop}:`, err.message))
+    .finally(() => activePipelines.delete(shop));
 
-  runPipeline(run).catch(err => {
-    addLog(run, 'ERROR', err.message, 'warn');
+  return { runId: engineRun.id };
+}
+
+export async function stopEngine(shop) {
+  activePipelines.delete(shop);
+  await prisma.engineRun.updateMany({
+    where: { shop, status: 'RUNNING' },
+    data: { status: 'STOPPED', endedAt: new Date(), phaseSub: 'stopped by user' },
+  }).catch(() => {});
+}
+
+export async function getEngineStatus(shop) {
+  const run = await prisma.engineRun.findFirst({
+    where: { shop },
+    orderBy: { startedAt: 'desc' },
   });
 
-  return run;
-}
-
-function addLog(run, tag, msg, cls) {
-  run.log.push({ tag, msg, cls: cls || tag.toLowerCase(), ts: Date.now() });
-  if (run.log.length > 200) run.log = run.log.slice(-150);
-}
-
-async function runPipeline(run) {
-  const { niche, config } = run;
-  const {
-    scoreThreshold = 65, marginFloor = 35, moqMax = 100,
-    autonomyLevel = 3, negotiationEnabled = true, pricingEnabled = true,
-    importEnabled = false, deathPredictor = true, surgeEnabled = true,
-  } = config;
-
-  const log = (tag, msg, cls) => addLog(run, tag, msg, cls);
-  const setPhase = (phase, sub) => { run.phase = phase; run.phaseSub = sub; };
-
-  // Phase 1: Scout
-  setPhase(1, 'scanning sources…');
-  log('SCOUT', `Niche: ${niche} — scanning TikTok · AliExpress · Reddit · Google Trends`);
-
-  const raw = await scoutProducts(niche, config, (msg) => log('SCOUT', msg));
-  run.products = raw;
-
-  if (!run.running) return;
-  setPhase(1, `found ${raw.length} candidates`);
-  log('SCOUT', `${raw.length} raw candidates located`);
-
-  await sleep(400);
-
-  // Phase 2: Score + filter
-  setPhase(2, 'scoring & filtering');
-  log('SCOUT', `Margin floor: ${marginFloor}% · Score threshold: ${scoreThreshold} · Max MOQ: ${moqMax}`);
-
-  const preFlt = run.products.length;
-  run.products = run.products.filter(p => {
-    if (p.score < scoreThreshold) { log('SCOUT', `⊘ ${p.name} — score ${p.score} < ${scoreThreshold}`); return false; }
-    if (p.margin < marginFloor) { log('SCOUT', `⊘ ${p.name} — margin ${p.margin}% < ${marginFloor}%`); return false; }
-    if (p.moq > moqMax) { log('SCOUT', `⊘ ${p.name} — MOQ ${p.moq} > ${moqMax}`); return false; }
-    return true;
-  });
-
-  const passed = run.products.length;
-  setPhase(2, `${passed}/${preFlt} passed`);
-  log('SCOUT', `${passed} products passed scoring`);
-
-  // Persist products to database
-  await persistProducts(run, run.products);
-
-  if (!run.running) return;
-  await sleep(400);
-
-  // Phase 3: Negotiate
-  if (!negotiationEnabled) {
-    log('SYSTEM', 'Negotiation disabled — skipping');
-  } else {
-    setPhase(3, `negotiating ${passed} suppliers`);
-    log('NEGOTIATE', 'Starting supplier negotiations…');
-
-    for (const p of run.products) {
-      if (!run.running) break;
-      setPhase(3, p.supplier);
-      log('NEGOTIATE', `Outreach → ${p.supplier} for "${p.name}"`);
-
-      const deal = await negotiateSupplier(p);
-      p.negState = 5;
-      p.discount = deal.discount;
-      p.landed = deal.landed;
-      p.margin = deal.margin;
-      if (deal.moq) p.moq = deal.moq;
-      run.dealsClosed++;
-
-      const badge = deal.aiPowered ? ' [AI]' : '';
-      log('NEGOTIATE', `Deal closed${badge}: ${p.supplier} — ${p.discount}% off, MOQ ${p.moq}`, 'negotiate');
-
-      await sleep(autonomyLevel >= 4 ? 500 : 1100);
-    }
-  }
-
-  if (!run.running) return;
-
-  // Phase 4: Price
-  if (!pricingEnabled) {
-    log('SYSTEM', 'Pricing disabled — skipping');
-  } else {
-    setPhase(4, 'computing prices');
-    log('PRICE', 'Dynamic pricing engine running…');
-
-    run.products.forEach(p => {
-      p.activePrice = computePricing(p, { surgeEnabled });
-      log('PRICE', `"${p.name}" → ${p.activePrice} mode ($${getActivePrice(p).toFixed(2)})`, 'price');
-    });
-  }
-
-  if (!run.running) return;
-
-  // Phase 5: Import
-  if (!importEnabled) {
-    log('SYSTEM', 'Auto-import disabled — skipping');
-  } else {
-    setPhase(5, `importing ${run.products.length} listings`);
-    log('IMPORT', 'Creating store listings…');
-
-    const importResult = await importListings(run.products);
-    importResult.results.forEach(r => {
-      if (r.ok) {
-        const p = run.products.find(x => x.id === r.id);
-        if (p) p.imported = true;
-        log('IMPORT', `Listed: "${p?.name}"`, 'import');
-      } else {
-        log('IMPORT', `Failed: product ${r.id} — ${r.error || r.status}`, 'warn');
-      }
-    });
-  }
-
-  await sleep(400);
-  if (!run.running) return;
-
-  // Phase 6: Monitor
-  setPhase(6, `monitoring ${run.products.length} products`);
-  log('SYSTEM', 'All products live. Monitoring active.');
-
-  const t1 = setInterval(() => {
-    if (!run.running) { clearInterval(t1); return; }
-    run.products.forEach(p => {
-      p.velocity = Math.max(10, p.velocity + Math.floor(Math.random() * 12 - 5));
-    });
-  }, 2500);
-
-  const t2 = deathPredictor ? setInterval(() => {
-    if (!run.running) { clearInterval(t2); return; }
-    run.products.forEach(p => {
-      if (p.trend < 0 && Math.random() < 0.15) {
-        log('WARN', `Death signal: "${p.name}" — trend ${p.trend}%, consider killing ads`, 'warn');
-      }
-    });
-  }, 8000) : null;
-
-  const t3 = setInterval(() => {
-    if (!run.running) { clearInterval(t3); return; }
-    run.sessionRev += Math.floor(Math.random() * 80 + 20);
-  }, 1500);
-
-  run.intervals = [t1, t3, ...(t2 ? [t2] : [])];
-}
-
-export function negotiateProduct(shop, productId) {
-  const run = runs.get(shop);
-  if (!run) return null;
-  return run.products.find(p => p.id === productId) || null;
-}
-
-export function setPriceMode(shop, productId, mode) {
-  const run = runs.get(shop);
-  if (!run) return null;
-  const product = run.products.find(p => p.id === productId);
-  if (!product) return null;
-  const validModes = ['surge', 'undercut', 'psych', 'standard'];
-  if (!validModes.includes(mode)) return null;
-  product.activePrice = mode;
-  return product;
-}
-
-export function getEngineStatus(shop) {
-  const run = runs.get(shop);
   if (!run) {
-    return { running: false, phase: 0, products: [], log: [], stats: { products: 0, avgMargin: 0, deals: 0, projRevenue: 0, sessionRev: 0 } };
+    return {
+      running: false, phase: 0, phaseSub: '', products: [], log: [],
+      stats: { products: 0, avgMargin: 0, deals: 0, projRevenue: 0, sessionRev: 0 },
+    };
   }
+
+  const dbProducts = await prisma.engineProduct.findMany({
+    where: { engineRunId: run.id },
+    orderBy: { score: 'desc' },
+    take: 100,
+  });
+
+  const products = dbProducts.map(toUiProduct);
+  const logs = (() => { try { return JSON.parse(run.logs || '[]'); } catch { return []; } })();
+
   return {
-    running: run.running,
+    running: run.status === 'RUNNING',
     phase: run.phase,
     phaseSub: run.phaseSub || '',
     niche: run.niche,
-    products: run.products,
-    log: run.log.slice(-50),
+    engineRunId: run.id,
+    products,
+    log: logs.slice(-50),
     stats: {
-      products: run.products.length,
-      avgMargin: calcAvgMargin(run.products),
+      products: products.length,
+      avgMargin: calcAvgMargin(products),
       deals: run.dealsClosed,
-      projRevenue: Math.round(run.products.reduce((a, p) => a + p.velocity * getActivePrice(p), 0)),
+      projRevenue: Math.round(
+        products.reduce((a, p) => a + p.velocity * getActivePrice(p), 0),
+      ),
       sessionRev: run.sessionRev,
     },
   };
 }
 
-async function persistProducts(run, products) {
-  if (!run.engineRunId) return;
+export async function negotiateProduct(shop, productId) {
+  const product = await prisma.engineProduct.findUnique({ where: { id: productId } });
+  if (!product) return null;
 
-  for (const product of products) {
+  const deal = await negotiateSupplier(toUiProduct(product));
+
+  await prisma.engineProduct.update({
+    where: { id: productId },
+    data: {
+      discount: deal.discount,
+      landedCost: deal.landed,
+      margin: deal.margin,
+      moq: deal.moq || product.moq,
+      negState: 5,
+      aiNegotiated: deal.aiPowered || false,
+      discountImproved: Math.max(0, deal.discount - product.discount),
+    },
+  });
+
+  return { ...toUiProduct(product), ...deal };
+}
+
+export async function setPriceMode(shop, productId, mode) {
+  const validModes = ['surge', 'undercut', 'psych', 'standard'];
+  if (!validModes.includes(mode)) return null;
+
+  const product = await prisma.engineProduct.findUnique({ where: { id: productId } });
+  if (!product) return null;
+
+  await prisma.engineProduct.update({
+    where: { id: productId },
+    data: { activePrice: mode },
+  });
+
+  return { ...toUiProduct(product), activePrice: mode };
+}
+
+// ─── Pipeline ──────────────────────────────────────────────────────────────
+
+async function runPipeline(runId, shop, niche, config) {
+  const {
+    scoreThreshold = 65,
+    marginFloor = 35,
+    moqMax = 100,
+    autonomyLevel = 3,
+    negotiationEnabled = true,
+    pricingEnabled = true,
+    importEnabled = false,
+    deathPredictor = true,
+    surgeEnabled = true,
+  } = config;
+
+  const log = (tag, msg, cls) => dbLog(runId, tag, msg, cls);
+  const setPhase = (phase, sub) => dbSetPhase(runId, phase, sub);
+  const stopped = () => dbIsStopped(runId);
+
+  try {
+    // ── Phase 1: Scout ───────────────────────────────────────────────────
+    await setPhase(1, 'scanning sources…');
+    await log('SCOUT', `Niche: ${niche} — scanning TikTok · AliExpress · Reddit · Google Trends`);
+
+    const raw = await scoutProducts(niche, config, msg => log('SCOUT', msg));
+
+    await setPhase(1, `found ${raw.length} candidates`);
+    await log('SCOUT', `${raw.length} raw candidates located`);
+    await sleep(300);
+
+    if (await stopped()) return;
+
+    // ── Phase 2: Score + filter ──────────────────────────────────────────
+    await setPhase(2, 'scoring & filtering');
+    await log('SCOUT', `Margin floor: ${marginFloor}% · Score: ${scoreThreshold} · MOQ: ${moqMax}`);
+
+    const filtered = raw.filter(p => {
+      if (p.score < scoreThreshold) return false;
+      if (p.margin < marginFloor) return false;
+      if (p.moq > moqMax) return false;
+      return true;
+    });
+
+    await setPhase(2, `${filtered.length}/${raw.length} passed`);
+    await log('SCOUT', `${filtered.length} products passed scoring`);
+
+    // Persist to DB
+    await persistProducts(runId, shop, filtered);
+    await flushLogs(runId);
+
+    if (await stopped()) return;
+    await sleep(300);
+
+    // ── Phase 3: Negotiate ───────────────────────────────────────────────
+    if (!negotiationEnabled) {
+      await log('SYSTEM', 'Negotiation disabled — skipping');
+    } else {
+      await setPhase(3, `negotiating ${filtered.length} suppliers`);
+      await log('NEGOTIATE', 'Starting supplier negotiations…');
+
+      let dealsClosed = 0;
+      for (const p of filtered) {
+        if (await stopped()) break;
+        await setPhase(3, p.supplier);
+        await log('NEGOTIATE', `Outreach → ${p.supplier} for "${p.name}"`);
+
+        const deal = await negotiateSupplier(p);
+        p.negState = 5;
+        p.discount = deal.discount;
+        p.landed = deal.landed;
+        p.margin = deal.margin;
+        if (deal.moq) p.moq = deal.moq;
+        p.aiPowered = deal.aiPowered;
+        dealsClosed++;
+
+        const badge = deal.aiPowered ? ' [AI]' : '';
+        await log('NEGOTIATE', `Deal closed${badge}: ${p.supplier} — ${p.discount}% off, MOQ ${p.moq}`, 'negotiate');
+
+        // Update DB product record
+        const dbProd = await prisma.engineProduct.findFirst({
+          where: { engineRunId: runId, sourceId: p.id },
+        });
+        if (dbProd) {
+          await prisma.engineProduct.update({
+            where: { id: dbProd.id },
+            data: {
+              discount: deal.discount,
+              landedCost: deal.landed,
+              margin: deal.margin,
+              moq: deal.moq || dbProd.moq,
+              negState: 5,
+              aiNegotiated: deal.aiPowered || false,
+              discountImproved: Math.max(0, deal.discount - dbProd.discount),
+            },
+          });
+        }
+
+        await sleep(autonomyLevel >= 4 ? 400 : 900);
+      }
+
+      await prisma.engineRun.update({
+        where: { id: runId },
+        data: { dealsClosed },
+      }).catch(() => {});
+    }
+
+    if (await stopped()) return;
+
+    // ── Phase 4: Price ───────────────────────────────────────────────────
+    if (!pricingEnabled) {
+      await log('SYSTEM', 'Pricing disabled — skipping');
+    } else {
+      await setPhase(4, 'computing prices');
+      await log('PRICE', 'Dynamic pricing engine running…');
+
+      for (const p of filtered) {
+        p.activePrice = computePricing(p, { surgeEnabled });
+        await log('PRICE', `"${p.name}" → ${p.activePrice} mode ($${getActivePrice(p).toFixed(2)})`, 'price');
+
+        const dbProd = await prisma.engineProduct.findFirst({
+          where: { engineRunId: runId, sourceId: p.id },
+        });
+        if (dbProd) {
+          await prisma.engineProduct.update({
+            where: { id: dbProd.id },
+            data: { activePrice: p.activePrice },
+          });
+        }
+      }
+    }
+
+    if (await stopped()) return;
+
+    // ── Phase 5: Import ──────────────────────────────────────────────────
+    if (!importEnabled) {
+      await log('SYSTEM', 'Auto-import disabled — products ready to import manually');
+    } else {
+      await setPhase(5, `importing ${filtered.length} listings`);
+      await log('IMPORT', 'Creating store listings…');
+
+      const importResult = await importListings(filtered);
+      for (const r of importResult.results) {
+        if (r.ok) {
+          await log('IMPORT', `Listed: "${filtered.find(x => x.id === r.id)?.name}"`, 'import');
+          const dbProd = await prisma.engineProduct.findFirst({
+            where: { engineRunId: runId, sourceId: r.id },
+          });
+          if (dbProd) {
+            await prisma.engineProduct.update({
+              where: { id: dbProd.id },
+              data: { imported: true, shopifyProductId: r.shopifyId || null },
+            });
+          }
+        } else {
+          await log('IMPORT', `Failed: product ${r.id} — ${r.error || r.status}`, 'warn');
+        }
+      }
+    }
+
+    await sleep(300);
+    if (await stopped()) return;
+
+    // ── Phase 6: Done ────────────────────────────────────────────────────
+    await setPhase(6, `${filtered.length} products ready`);
+    await log('SYSTEM', `Pipeline complete. ${filtered.length} products live.`);
+    await flushLogs(runId);
+
+    await prisma.engineRun.update({
+      where: { id: runId },
+      data: { status: 'COMPLETED', endedAt: new Date(), phase: 6 },
+    }).catch(() => {});
+
+  } catch (err) {
+    await log('ERROR', err.message, 'warn');
+    await flushLogs(runId);
+    await prisma.engineRun.update({
+      where: { id: runId },
+      data: { status: 'ERROR', endedAt: new Date(), phaseSub: err.message },
+    }).catch(() => {});
+  }
+}
+
+// ─── Persist scouted products to DB ───────────────────────────────────────
+
+async function persistProducts(runId, shop, products) {
+  for (const p of products) {
     try {
       await prisma.engineProduct.upsert({
-        where: { sourceId: product.id },
+        where: { engineRunId_sourceId: { engineRunId: runId, sourceId: p.id } },
         update: {
-          score: product.score,
-          margin: product.margin,
-          discount: product.discount,
-          landedCost: product.landed,
-          moq: product.moq,
-          activePrice: product.activePrice,
-          aiNegotiated: product.aiPowered || false,
-          updatedAt: new Date(),
+          score: p.score,
+          margin: p.margin,
+          discount: p.discount ?? 0,
+          landedCost: p.landed ?? 0,
+          moq: p.moq ?? 0,
+          activePrice: p.activePrice || 'standard',
+          aiNegotiated: p.aiPowered || false,
         },
         create: {
-          engineRunId: run.engineRunId,
-          shop: run.shop,
-          sourceId: product.id,
-          name: product.name,
-          category: product.cat,
-          score: product.score,
-          margin: product.margin,
-          price: product.price,
-          cost: product.cost,
-          landedCost: product.landed,
-          velocity: product.velocity,
-          trend: product.trend,
-          lifecycle: product.lifecycle,
-          competition: product.competition,
-          supplier: product.supplier,
-          supplierScore: product.supScore,
-          moq: product.moq,
-          discount: product.discount,
-          sources: JSON.stringify(product.sources || []),
-          searches: product.searches,
-          impulse: product.impulse,
-          warnings: JSON.stringify(product.warns || []),
-          negState: product.negState,
-          activePrice: product.activePrice,
-          aiNegotiated: product.aiPowered || false,
+          engineRunId: runId,
+          shop,
+          sourceId: p.id,
+          name: p.name,
+          category: p.cat || '',
+          score: p.score,
+          margin: p.margin,
+          price: p.price ?? 0,
+          cost: p.cost ?? 0,
+          landedCost: p.landed ?? 0,
+          velocity: p.velocity ?? 0,
+          trend: p.trend ?? 0,
+          lifecycle: p.lifecycle || 'mature',
+          competition: p.competition || 'medium',
+          supplier: p.supplier || '',
+          supplierScore: p.supScore ?? 0,
+          moq: p.moq ?? 0,
+          discount: p.discount ?? 0,
+          sources: JSON.stringify(p.sources || []),
+          searches: p.searches ?? 0,
+          impulse: p.impulse ?? 0,
+          warnings: JSON.stringify(p.warns || []),
+          negState: p.negState ?? 0,
+          activePrice: p.activePrice || 'standard',
+          aiNegotiated: p.aiPowered || false,
         },
       });
     } catch (err) {
-      // Non-critical, log but continue
-      console.error('Failed to persist product:', product.id, err.message);
+      console.error('[engine] persist failed:', p.id, err.message);
     }
   }
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}

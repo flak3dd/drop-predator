@@ -82,7 +82,11 @@ model EngineRun {
   niche       String
   status      String   @default("RUNNING")
   phase       Int      @default(0)
+  phaseSub    String   @default("")
   config      String   @default("{}")
+  logs        String   @default("[]")
+  dealsClosed Int      @default(0)
+  sessionRev  Int      @default(0)
   startedAt   DateTime @default(now())
   endedAt     DateTime?
   products    EngineProduct[]
@@ -129,6 +133,7 @@ model EngineProduct {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  @@unique([engineRunId, sourceId])
   @@index([shop, imported])
   @@index([shop, score])
   @@index([shop, lifecycle])

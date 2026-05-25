@@ -1,6 +1,12 @@
 import { authenticate } from "../shopify.server";
-import { startEngine, stopEngine, getEngineStatus, getEngineProducts, setPriceMode } from "../services/engine/pipeline.js";
-import { negotiateSupplier } from "../services/engine/negotiate.js";
+import {
+  startEngine,
+  stopEngine,
+  getEngineStatus,
+  getEngineProducts,
+  negotiateProduct,
+  setPriceMode,
+} from "../services/engine/pipeline.js";
 import { importListings } from "../services/engine/importer.js";
 import prisma from "../db.server.js";
 
@@ -11,7 +17,7 @@ export async function loader({ request }) {
 
   if (intent === "products") {
     const niche = url.searchParams.get("niche") || "gym";
-    return Response.json({ products: getEngineProducts(niche) });
+    return Response.json({ products: await getEngineProducts(niche) });
   }
 
   if (intent === "history") {
@@ -42,7 +48,7 @@ export async function loader({ request }) {
     return Response.json({ products });
   }
 
-  const status = getEngineStatus(session.shop);
+  const status = await getEngineStatus(session.shop);
   return Response.json(status);
 }
 
@@ -54,55 +60,41 @@ export async function action({ request }) {
   switch (intent) {
     case "start": {
       const { niche = "gym", config = {} } = body;
-      startEngine(session.shop, niche, config);
-      return Response.json({ ok: true });
+      const result = await startEngine(session.shop, niche, config);
+      return Response.json({ ok: true, ...result });
     }
 
     case "stop": {
-      stopEngine(session.shop);
+      await stopEngine(session.shop);
       return Response.json({ ok: true });
     }
 
     case "negotiate": {
       const { productId } = body;
-      const status = getEngineStatus(session.shop);
-      const product = status.products.find(p => p.id === productId);
-      if (!product) return Response.json({ error: "Product not found" }, { status: 404 });
-
-      const deal = await negotiateSupplier(product);
-      product.negState = 5;
-      product.discount = deal.discount;
-      product.landed = deal.landed;
-      product.margin = deal.margin;
-      if (deal.moq) product.moq = deal.moq;
-
-      return Response.json({ ok: true, deal, product });
+      // negotiateProduct reads from DB, calls negotiateSupplier, writes result back to DB
+      const result = await negotiateProduct(session.shop, productId);
+      if (!result) return Response.json({ error: "Product not found" }, { status: 404 });
+      return Response.json({ ok: true, product: result });
     }
 
     case "setPrice": {
       const { productId, mode } = body;
-      const product = setPriceMode(session.shop, productId, mode);
+      const product = await setPriceMode(session.shop, productId, mode);
       if (!product) return Response.json({ error: "Product not found or invalid mode" }, { status: 400 });
       return Response.json({ ok: true, product });
     }
 
     case "import": {
       const { productIds } = body;
-      const status = getEngineStatus(session.shop);
+      const status = await getEngineStatus(session.shop);
       let toImport = status.products;
       if (productIds?.length) {
         toImport = status.products.filter(p => productIds.includes(p.id));
       }
       if (!toImport.length) return Response.json({ error: "No products to import" }, { status: 400 });
 
+      // importListings handles DB updates (imported flag + shopifyProductId) internally
       const result = await importListings(toImport, admin);
-      result.results.forEach(r => {
-        if (r.ok) {
-          const p = status.products.find(x => x.id === r.id);
-          if (p) p.imported = true;
-        }
-      });
-
       return Response.json({ ok: true, result });
     }
 
@@ -112,7 +104,6 @@ export async function action({ request }) {
         return Response.json({ error: "title and productIds are required" }, { status: 400 });
       }
 
-      // Create drop
       const drop = await prisma.drop.create({
         data: {
           shop: session.shop,
@@ -122,7 +113,6 @@ export async function action({ request }) {
         },
       });
 
-      // Add products to drop
       for (const productId of productIds) {
         const engineProduct = await prisma.engineProduct.findUnique({
           where: { id: productId },
@@ -137,7 +127,7 @@ export async function action({ request }) {
               productTitle: engineProduct.name,
               productImage: "",
               allocatedQuantity: 50,
-              dropPrice: engineProduct.listing?.title || "",
+              dropPrice: "",
               originalPrice: JSON.stringify([]),
             },
           });
@@ -156,29 +146,28 @@ export async function action({ request }) {
       const drop = await prisma.drop.findFirst({
         where: { id: dropId, shop: session.shop },
       });
-
       if (!drop) {
         return Response.json({ error: "Drop not found" }, { status: 404 });
       }
 
-      // Import products to Shopify first
-      const status = getEngineStatus(session.shop);
-      let toImport = status.products.filter(p => productIds.includes(p.id));
+      // Resolve products from current engine run
+      const status = await getEngineStatus(session.shop);
+      const toImport = status.products.filter(p => productIds.includes(p.id));
 
       if (toImport.length > 0) {
         const result = await importListings(toImport, admin);
 
-        // Add imported products to drop
         for (const r of result.results) {
           if (r.ok) {
+            const p = toImport.find(x => x.id === r.id);
             await prisma.dropProduct.create({
               data: {
                 dropId,
                 productId: r.shopifyId,
-                productTitle: r.listing?.title || "Product",
+                productTitle: p?.name || "Product",
                 productImage: "",
                 allocatedQuantity: 50,
-                dropPrice: r.listing?.title || "",
+                dropPrice: "",
                 originalPrice: JSON.stringify([]),
               },
             });
