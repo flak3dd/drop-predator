@@ -11,6 +11,9 @@ uid = "78fe462d-2026-c39a-1b6c-fe38eb6b39c1843e4390"
 module = "./src/ActionExtension.jsx"
 target = "admin.product-details.action.render"
 
+[extensions.capabilities]
+api_access = true
+
 
 # Valid extension targets:
 

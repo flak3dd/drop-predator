@@ -80,6 +80,7 @@ function getActivePrice(p) {
 export default function EnginePage() {
   const { savedConfig } = useLoaderData();
   const shopify = useAppBridge();
+  const showToast = (msg) => { try { shopify?.toast?.show(msg); } catch { /* non-embedded dev mode */ } };
 
   // Split persisted config into core / scheduling / alerts
   const { scheduling: savedScheduling, alerts: savedAlerts, ...savedCore } = savedConfig || {};
@@ -191,7 +192,7 @@ export default function EnginePage() {
     setActionError(null);
     try {
       await apiCall({ intent: "import", productIds });
-      shopify.toast.show(`${productIds.length} product${productIds.length !== 1 ? "s" : ""} imported to store`);
+      showToast(`${productIds.length} product${productIds.length !== 1 ? "s" : ""} imported to store`);
     } catch (err) {
       setActionError(err.message);
     } finally {
@@ -205,7 +206,7 @@ export default function EnginePage() {
     setActionError(null);
     try {
       await apiCall({ intent: "createDrop", title, productIds });
-      shopify.toast.show("Drop created successfully");
+      showToast("Drop created successfully");
     } catch (err) {
       setActionError(err.message);
     } finally {
@@ -233,7 +234,7 @@ export default function EnginePage() {
       });
       if (!res.ok) throw new Error(`Save failed (${res.status})`);
       setSaveStatus("saved");
-      shopify.toast.show("Configuration saved");
+      showToast("Configuration saved");
       setTimeout(() => setSaveStatus(null), 3000);
     } catch {
       setSaveStatus("error");
