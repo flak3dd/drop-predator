@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { getProducts, getNicheConfig } from '../../../engine/data/products.js';
+import { getProducts, getNicheConfig } from '../../data/products.js';
 import { fetchLiveProducts } from './live-catalog.js';
 
 export async function scoutProducts(niche, config, log) {

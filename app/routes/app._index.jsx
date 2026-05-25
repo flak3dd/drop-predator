@@ -1,6 +1,5 @@
 import { useLoaderData, useNavigate } from "react-router";
 import { useEffect } from "react";
-import PropTypes from "prop-types";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -210,10 +209,10 @@ export default function Dashboard() {
 
       <s-section heading="Overview">
         <s-stack direction="inline" gap="base">
-          <StatCard label="Total Drops" value={stats.totalDrops} />
-          <StatCard label="Active" value={stats.activeDrops} />
-          <StatCard label="Scheduled" value={stats.scheduledDrops} />
-          <StatCard label="Completed" value={stats.completedDrops} />
+          <DashboardStatCard label="Total Drops" value={stats.totalDrops} />
+          <DashboardStatCard label="Active" value={stats.activeDrops} />
+          <DashboardStatCard label="Scheduled" value={stats.scheduledDrops} />
+          <DashboardStatCard label="Completed" value={stats.completedDrops} />
         </s-stack>
       </s-section>
 
@@ -304,7 +303,7 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ label, value }) {
+function DashboardStatCard({ label, value }) {
   return (
     <s-box
       padding="base"
@@ -322,11 +321,6 @@ function StatCard({ label, value }) {
     </s-box>
   );
 }
-
-StatCard.propTypes = {
-  label: PropTypes.string.isRequired,
-  value: PropTypes.string.isRequired,
-};
 
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);

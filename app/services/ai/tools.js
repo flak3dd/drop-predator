@@ -1,0 +1,560 @@
+/**
+ * app/services/ai/tools.js
+ * ---------------------------------------------------------
+ * Shopify automation tools available to AI agents.
+ * Each tool has: description, parameters (zod schema), and execute.
+ *
+ * Tools that need a Shopify admin client are created via
+ * `createShopifyTools(admin)` — call this in your route action
+ * after authenticating the request.
+ *
+ * Tools that don't need Shopify (classification, SEO generation)
+ * are exported directly.
+ */
+
+import { z } from 'zod';
+
+/**
+ * Create a `tool()` wrapper — dynamic import so the module
+ * loads even if `ai` isn't installed yet.
+ */
+async function loadTool() {
+  const { tool } = await import('ai');
+  return tool;
+}
+
+// ─── Standalone tools (no admin client needed) ──────────────────────────────
+
+let _standaloneTools = null;
+
+export async function getStandaloneTools() {
+  if (_standaloneTools) return _standaloneTools;
+
+  const tool = await loadTool();
+
+  _standaloneTools = {
+    generateSEOFields: tool({
+      description: 'Generate SEO-optimized meta title and meta description for a product.',
+      parameters: z.object({
+        productTitle: z.string(),
+        productDescription: z.string(),
+        targetKeywords: z.array(z.string()).optional(),
+      }),
+      execute: async ({ productTitle, productDescription, targetKeywords }) => {
+        const keywords = targetKeywords?.join(', ') || productTitle;
+        return {
+          seoTitle: `${productTitle} | Free Shipping`,
+          metaDescription: `Shop ${productTitle}. ${productDescription.slice(0, 100).replace(/<[^>]+>/g, '')}... Order now with fast delivery.`,
+          focusKeyword: keywords.split(',')[0]?.trim(),
+        };
+      },
+    }),
+
+    classifyEmailUrgency: tool({
+      description: 'Classify the urgency level of a customer email based on its content.',
+      parameters: z.object({
+        subject: z.string(),
+        body: z.string(),
+      }),
+      execute: async ({ subject, body }) => {
+        const text = (subject + ' ' + body).toLowerCase();
+        const isHigh = ['missing', 'lost', 'wrong', 'refund', 'damaged', 'broken', 'urgent', 'cancel'].some(w => text.includes(w));
+        return {
+          urgency: isHigh ? 'high' : 'normal',
+          category: text.includes('refund') ? 'refund'
+            : (text.includes('missing') || text.includes('where')) ? 'tracking'
+            : text.includes('wrong') ? 'wrong-item'
+            : 'general',
+        };
+      },
+    }),
+  };
+
+  return _standaloneTools;
+}
+
+// ─── Shopify-connected tools (require authenticated admin client) ───────────
+
+/**
+ * Create tools bound to an authenticated Shopify admin client.
+ *
+ * @param {object} admin - The admin client from `authenticate.admin(request)`
+ * @returns {Promise<object>} Map of tool name → AI SDK tool
+ */
+export async function createShopifyTools(admin) {
+  const tool = await loadTool();
+  const standalone = await getStandaloneTools();
+
+  const shopifyTools = {
+    createProduct: tool({
+      description: 'Create a new product in the Shopify store with full details.',
+      parameters: z.object({
+        title: z.string().describe('Product title'),
+        description: z.string().describe('HTML product description'),
+        price: z.number().describe('Price in dollars'),
+        compareAtPrice: z.number().optional().describe('Original price for sale display'),
+        tags: z.array(z.string()).describe('Product tags for filtering'),
+        vendor: z.string().optional().describe('Brand or vendor name'),
+        sku: z.string().optional().describe('Stock keeping unit'),
+        category: z.string().optional().describe('Product category'),
+      }),
+      execute: async (params) => {
+        try {
+          const response = await admin.graphql(`
+            mutation productCreate($input: ProductInput!) {
+              productCreate(input: $input) {
+                product { id title handle status }
+                userErrors { field message }
+              }
+            }
+          `, {
+            variables: {
+              input: {
+                title: params.title,
+                descriptionHtml: params.description,
+                vendor: params.vendor || '',
+                tags: params.tags || [],
+                productType: params.category || '',
+              },
+            },
+          });
+          const data = await response.json();
+          const result = data.data?.productCreate;
+
+          if (result?.userErrors?.length) {
+            return { success: false, error: result.userErrors[0].message };
+          }
+          return {
+            success: true,
+            productId: result.product.id,
+            handle: result.product.handle,
+            status: result.product.status,
+            message: `Product "${params.title}" created`,
+          };
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+      },
+    }),
+
+    publishProduct: tool({
+      description: 'Publish a draft product to make it live on the storefront.',
+      parameters: z.object({
+        productId: z.string().describe('The Shopify product GID to publish'),
+      }),
+      execute: async ({ productId }) => {
+        try {
+          const response = await admin.graphql(`
+            mutation productUpdate($input: ProductInput!) {
+              productUpdate(input: $input) {
+                product { id status }
+                userErrors { field message }
+              }
+            }
+          `, {
+            variables: { input: { id: productId, status: 'ACTIVE' } },
+          });
+          const data = await response.json();
+          const result = data.data?.productUpdate;
+
+          if (result?.userErrors?.length) {
+            return { success: false, error: result.userErrors[0].message };
+          }
+          return { success: true, productId, message: 'Product published and live' };
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+      },
+    }),
+
+    updateProduct: tool({
+      description: 'Update an existing product fields like title, description, price, or tags.',
+      parameters: z.object({
+        productId: z.string(),
+        fields: z.object({
+          title: z.string().optional(),
+          description: z.string().optional(),
+          tags: z.array(z.string()).optional(),
+        }),
+      }),
+      execute: async ({ productId, fields }) => {
+        try {
+          const input = { id: productId };
+          if (fields.title) input.title = fields.title;
+          if (fields.description) input.descriptionHtml = fields.description;
+          if (fields.tags) input.tags = fields.tags;
+
+          const response = await admin.graphql(`
+            mutation productUpdate($input: ProductInput!) {
+              productUpdate(input: $input) {
+                product { id title }
+                userErrors { field message }
+              }
+            }
+          `, { variables: { input } });
+          const data = await response.json();
+          const result = data.data?.productUpdate;
+
+          if (result?.userErrors?.length) {
+            return { success: false, error: result.userErrors[0].message };
+          }
+          return { success: true, productId, updated: Object.keys(fields) };
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+      },
+    }),
+
+    getProducts: tool({
+      description: 'Retrieve a list of products from the Shopify store.',
+      parameters: z.object({
+        status: z.enum(['all', 'active', 'draft', 'archived']).default('all'),
+        limit: z.number().default(10),
+      }),
+      execute: async ({ status, limit }) => {
+        try {
+          const query = status === 'all' ? '' : `status:${status}`;
+          const response = await admin.graphql(`
+            query getProducts($first: Int!, $query: String) {
+              products(first: $first, query: $query) {
+                nodes { id title handle status priceRangeV2 { minVariantPrice { amount } } totalInventory }
+              }
+            }
+          `, { variables: { first: Math.min(limit, 50), query: query || undefined } });
+          const data = await response.json();
+          const products = data.data?.products?.nodes || [];
+          return { products, total: products.length };
+        } catch (err) {
+          return { products: [], total: 0, error: err.message };
+        }
+      },
+    }),
+
+    bulkUpdateTags: tool({
+      description: 'Add or remove tags across multiple products at once.',
+      parameters: z.object({
+        productIds: z.array(z.string()).describe('List of Shopify product GIDs'),
+        addTags: z.array(z.string()).optional(),
+        removeTags: z.array(z.string()).optional(),
+      }),
+      execute: async ({ productIds, addTags = [], removeTags = [] }) => {
+        let updated = 0;
+        for (const id of productIds) {
+          try {
+            if (addTags.length > 0) {
+              await admin.graphql(`
+                mutation tagsAdd($id: ID!, $tags: [String!]!) {
+                  tagsAdd(id: $id, tags: $tags) { userErrors { message } }
+                }
+              `, { variables: { id, tags: addTags } });
+            }
+            if (removeTags.length > 0) {
+              await admin.graphql(`
+                mutation tagsRemove($id: ID!, $tags: [String!]!) {
+                  tagsRemove(id: $id, tags: $tags) { userErrors { message } }
+                }
+              `, { variables: { id, tags: removeTags } });
+            }
+            updated++;
+          } catch { /* continue */ }
+        }
+        return { updated, total: productIds.length, message: `Updated tags on ${updated} products` };
+      },
+    }),
+
+    checkInventory: tool({
+      description: 'Check current inventory levels for store products.',
+      parameters: z.object({
+        limit: z.number().default(20).describe('Number of products to check'),
+      }),
+      execute: async ({ limit }) => {
+        try {
+          const response = await admin.graphql(`
+            query inventoryCheck($first: Int!) {
+              products(first: $first, sortKey: INVENTORY_TOTAL, reverse: false) {
+                nodes { id title totalInventory status }
+              }
+            }
+          `, { variables: { first: Math.min(limit, 50) } });
+          const data = await response.json();
+          const products = data.data?.products?.nodes || [];
+          const low = products.filter(p => p.totalInventory < 20);
+          return { lowStockItems: low, total: products.length };
+        } catch (err) {
+          return { lowStockItems: [], total: 0, error: err.message };
+        }
+      },
+    }),
+
+    getStoreMetrics: tool({
+      description: 'Get high-level store performance metrics.',
+      parameters: z.object({
+        period: z.enum(['today', '7d', '30d', '90d']).default('30d'),
+      }),
+      execute: async ({ period }) => {
+        // Shopify analytics API is limited — return what we can from orders
+        try {
+          const response = await admin.graphql(`
+            query storeMetrics {
+              productsCount { count }
+              orders(first: 1, sortKey: CREATED_AT, reverse: true) {
+                nodes { id name }
+              }
+            }
+          `);
+          const data = await response.json();
+          return {
+            period,
+            totalProducts: data.data?.productsCount?.count || 0,
+            latestOrder: data.data?.orders?.nodes?.[0]?.name || 'N/A',
+          };
+        } catch (err) {
+          return { period, error: err.message };
+        }
+      },
+    }),
+  };
+
+  // Merge Shopify tools with standalone tools
+  return { ...shopifyTools, ...standalone };
+}
+
+/**
+ * Create email tools — simulated for now.
+ * In production, connect to Shopify inbox, Gorgias, or a helpdesk API.
+ */
+export async function createEmailTools() {
+  const tool = await loadTool();
+  const standalone = await getStandaloneTools();
+
+  return {
+    ...standalone,
+
+    getUnrepliedEmails: tool({
+      description: 'Fetch customer emails that have not been replied to yet.',
+      parameters: z.object({
+        limit: z.number().default(10),
+      }),
+      execute: async ({ limit }) => {
+        // Mock emails — in production, integrate with Shopify Inbox or helpdesk
+        const emails = [
+          { id: 'em_001', from: 'customer@example.com', name: 'Customer A', subject: 'Where is my order #4821?', body: "I placed order #4821 last week and it still hasn't arrived.", urgency: 'high', orderId: '4821' },
+          { id: 'em_002', from: 'customer2@example.com', name: 'Customer B', subject: 'Wrong size received', body: 'I ordered a Large but received a Medium.', urgency: 'high', orderId: '4819' },
+          { id: 'em_003', from: 'customer3@example.com', name: 'Customer C', subject: 'Refund request', body: "The quality wasn't as described.", urgency: 'normal', orderId: '4802' },
+        ];
+        return { emails: emails.slice(0, limit), total: emails.length };
+      },
+    }),
+
+    sendEmailReply: tool({
+      description: 'Send a reply email to a customer.',
+      parameters: z.object({
+        emailId: z.string(),
+        to: z.string(),
+        subject: z.string(),
+        body: z.string().describe('Plain text email body'),
+      }),
+      execute: async ({ emailId, to, subject }) => {
+        // Mock send — in production, integrate with email service
+        return { success: true, emailId, message: `Reply drafted for ${to}: "${subject}"` };
+      },
+    }),
+  };
+}
+
+/**
+ * Create media/image sourcing tools bound to a Shopify admin client.
+ * These power the MediaAgent for product image acquisition.
+ *
+ * @param {object} admin - The admin client from `authenticate.admin(request)`
+ * @returns {Promise<object>} Map of tool name → AI SDK tool
+ */
+export async function createMediaTools(admin) {
+  const tool = await loadTool();
+
+  return {
+    searchProductImages: tool({
+      description: 'Search for product images across multiple sources (Google, Bing, AliExpress, CJ, Unsplash, DuckDuckGo). Returns scored and deduplicated image candidates.',
+      parameters: z.object({
+        productName: z.string().describe('Product name to search for images'),
+        category: z.string().optional().describe('Product category for better results (e.g. "Gym & Fitness")'),
+        maxImages: z.number().optional().default(8).describe('Maximum number of images to return'),
+        strategies: z.array(z.enum(['google', 'bing', 'aliexpress', 'cj', 'unsplash', 'duckduckgo'])).optional()
+          .describe('Which search strategies to use. Defaults to all available.'),
+      }),
+      execute: async ({ productName, category, maxImages, strategies }) => {
+        const { sourceProductImages } = await import('./media.js');
+        return sourceProductImages(productName, {
+          category,
+          maxImages,
+          strategies,
+          log: () => {},
+        });
+      },
+    }),
+
+    buildImageDorkQueries: tool({
+      description: 'Generate advanced image search dork queries for a product. Returns specialised search strings for Google, Bing, and general search engines. Use these for manual image hunting.',
+      parameters: z.object({
+        productName: z.string().describe('Product name'),
+        category: z.string().optional().describe('Product category'),
+      }),
+      execute: async ({ productName, category }) => {
+        const { buildImageDorks } = await import('./media.js');
+        return buildImageDorks(productName, category);
+      },
+    }),
+
+    validateImageUrls: tool({
+      description: 'Validate that image URLs are reachable and actually serve image content. Performs HEAD requests to check each URL.',
+      parameters: z.object({
+        urls: z.array(z.string()).describe('Image URLs to validate'),
+      }),
+      execute: async ({ urls }) => {
+        const { sourceProductImages } = await import('./media.js');
+        // Re-use the validation logic by constructing minimal image objects
+        const results = await Promise.allSettled(
+          urls.map(async url => {
+            try {
+              const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+              const ct = res.headers.get('content-type') || '';
+              const cl = parseInt(res.headers.get('content-length') || '0');
+              return { url, valid: res.ok && ct.startsWith('image/'), contentType: ct, sizeBytes: cl };
+            } catch (err) {
+              return { url, valid: false, error: err.message };
+            }
+          }),
+        );
+        const validated = results.map(r => r.status === 'fulfilled' ? r.value : { url: '?', valid: false, error: 'check failed' });
+        return { results: validated, valid: validated.filter(v => v.valid).length, invalid: validated.filter(v => !v.valid).length };
+      },
+    }),
+
+    generateImageAltText: tool({
+      description: 'Generate SEO-friendly alt text for a product image using AI.',
+      parameters: z.object({
+        productName: z.string().describe('Product name'),
+        category: z.string().optional().describe('Product category'),
+        imageContext: z.string().optional().describe('Additional context about the image (e.g. "white background", "lifestyle shot")'),
+      }),
+      execute: async ({ productName, category, imageContext }) => {
+        const { generateAltText } = await import('./media.js');
+        const alt = await generateAltText(productName, category);
+        return { alt, product: productName, context: imageContext || 'product photo' };
+      },
+    }),
+
+    attachImagesToShopifyProduct: tool({
+      description: 'Attach image URLs to an existing Shopify product as product media. The images are fetched by Shopify from the source URLs.',
+      parameters: z.object({
+        productId: z.string().describe('Shopify product GID (e.g. "gid://shopify/Product/12345")'),
+        images: z.array(z.object({
+          url: z.string().describe('Image URL to attach'),
+          alt: z.string().optional().describe('Alt text for the image'),
+        })).describe('Images to attach to the product'),
+      }),
+      execute: async ({ productId, images }) => {
+        if (!admin) {
+          return { success: false, error: 'No Shopify admin client available. Cannot attach images.' };
+        }
+        const { attachImagesToProduct } = await import('./media.js');
+        return attachImagesToProduct(productId, images, admin);
+      },
+    }),
+
+    getProductImages: tool({
+      description: 'Get the current images attached to a Shopify product.',
+      parameters: z.object({
+        productId: z.string().describe('Shopify product GID'),
+      }),
+      execute: async ({ productId }) => {
+        if (!admin) return { images: [], error: 'No admin client' };
+        try {
+          const response = await admin.graphql(`
+            query productMedia($id: ID!) {
+              product(id: $id) {
+                id title
+                media(first: 20) {
+                  nodes {
+                    ... on MediaImage {
+                      id alt
+                      image { url width height }
+                      status
+                    }
+                  }
+                }
+              }
+            }
+          `, { variables: { id: productId } });
+          const data = await response.json();
+          const media = data.data?.product?.media?.nodes || [];
+          return { productId, title: data.data?.product?.title, images: media, total: media.length };
+        } catch (err) {
+          return { productId, images: [], error: err.message };
+        }
+      },
+    }),
+
+    removeProductImage: tool({
+      description: 'Remove an image from a Shopify product.',
+      parameters: z.object({
+        productId: z.string().describe('Shopify product GID'),
+        mediaId: z.string().describe('Media GID to remove'),
+      }),
+      execute: async ({ productId, mediaId }) => {
+        if (!admin) return { success: false, error: 'No admin client' };
+        try {
+          const response = await admin.graphql(`
+            mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
+              productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
+                deletedMediaIds
+                mediaUserErrors { field message }
+              }
+            }
+          `, { variables: { productId, mediaIds: [mediaId] } });
+          const data = await response.json();
+          const result = data.data?.productDeleteMedia;
+          if (result?.mediaUserErrors?.length) {
+            return { success: false, error: result.mediaUserErrors[0].message };
+          }
+          return { success: true, deletedMediaId: mediaId };
+        } catch (err) {
+          return { success: false, error: err.message };
+        }
+      },
+    }),
+  };
+}
+
+/**
+ * Create shipping tools — simulated for now.
+ * In production, connect to Shopify delivery profiles API.
+ */
+export async function createShippingTools() {
+  const tool = await loadTool();
+
+  return {
+    createShippingRule: tool({
+      description: 'Create a shipping rate rule for a specific zone.',
+      parameters: z.object({
+        zone: z.string().describe('Shipping zone name'),
+        method: z.string().describe('Shipping method name'),
+        rate: z.number().describe('Shipping rate in dollars (0 for free)'),
+        minOrderValue: z.number().optional().describe('Minimum order value'),
+        estimatedDays: z.string().describe('Estimated delivery time'),
+      }),
+      execute: async (params) => {
+        // Mock — in production, use Shopify delivery profiles GraphQL API
+        return { success: true, ruleId: `rule_${Date.now()}`, message: `Rule created: ${params.method} for ${params.zone}` };
+      },
+    }),
+
+    getShippingRules: tool({
+      description: 'Get all current shipping rules and zones.',
+      parameters: z.object({}),
+      execute: async () => {
+        return { rules: [], total: 0, message: 'Connect Shopify delivery profiles for live data' };
+      },
+    }),
+  };
+}

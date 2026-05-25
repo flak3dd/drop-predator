@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import cache from './catalog-cache.js';
 import { fullSentimentScan } from './sentiment.js';
 import { runDiscovery } from './discovery.js';
-import { getProducts, getNicheConfig } from '../../../engine/data/products.js';
+import { getProducts, getNicheConfig } from '../../data/products.js';
 
 const SCRAPE_TTL = 60 * 60 * 1000;
 const API_TTL    = 30 * 60 * 1000;

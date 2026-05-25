@@ -1,11 +1,40 @@
 /* eslint-disable no-undef */
 export async function negotiateSupplier(product) {
+  // Prefer AI Gateway if configured, fall back to direct Anthropic SDK, then algorithmic
+  if (process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN) {
+    try {
+      return await gatewayNegotiate(product);
+    } catch { /* fall through */ }
+  }
   if (process.env.ANTHROPIC_API_KEY) {
     try {
       return await aiNegotiate(product);
     } catch { /* fall through to algorithmic */ }
   }
   return algorithmicNegotiate(product);
+}
+
+async function gatewayNegotiate(product) {
+  const { getGatewayModel, MODELS } = await import('../ai/gateway.js');
+  const { generateText } = await import('ai');
+  const model = await getGatewayModel(MODELS.fast);
+
+  const result = await generateText({
+    model,
+    system: 'You are a professional buyer negotiating discounts with a Chinese manufacturer. Reply only with valid JSON.',
+    prompt: `Negotiate with "${product.supplier}" for "${product.name}".\nCurrent: $${product.cost}/unit, ${product.discount}% discount, MOQ ${product.moq}.\nMonthly velocity: ${product.velocity} units.\nReturn JSON: {"discount": <improved integer>, "moq": <integer>, "reason": "<short string>"}`,
+    maxTokens: 150,
+  });
+
+  const raw = result.text.trim();
+  const parsed = JSON.parse(raw.match(/\{.*\}/s)[0]);
+
+  const newDiscount = Math.min(parsed.discount, product.discount + 10);
+  const newMoq = parsed.moq || product.moq;
+  const landed = parseFloat((product.cost * (1 - newDiscount / 100) * 1.18).toFixed(2));
+  const margin = Math.round((product.price - landed) / product.price * 100);
+
+  return { discount: newDiscount, moq: newMoq, landed, margin, aiPowered: true, gateway: true };
 }
 
 async function aiNegotiate(product) {

@@ -3,7 +3,7 @@ import { scoutProducts } from './scout.js';
 import { negotiateSupplier } from './negotiate.js';
 import { computePricing, getActivePrice } from './price.js';
 import { importListings } from './importer.js';
-import { getProducts } from '../../../engine/data/products.js';
+import { getProducts } from '../../data/products.js';
 import prisma from '../../db.server.js';
 
 const runs = new Map();

@@ -1,5 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
+import { StatCard, ConfigSlider, ConfigToggle, DetailTable, LifecycleBadge, LogTag } from "../components/engine-ui";
+import { MonitoringDashboard } from "../components/engine/MonitoringDashboard";
+import { SchedulingConfig } from "../components/engine/SchedulingConfig";
+import { AlertsConfig } from "../components/engine/AlertsConfig";
+import { fmt$ } from "../lib/format";
 
 const NICHES = [
   { value: "gym", label: "Gym & tactical", icon: "🏋️" },
@@ -30,12 +35,6 @@ const PRESETS = {
 
 const PHASES = ["idle", "Scout", "Score", "Negotiate", "Price", "Import", "Monitor"];
 
-function fmt$(n) {
-  if (n >= 1000000) return "$" + (n / 1000000).toFixed(1) + "M";
-  if (n >= 1000) return "$" + (n / 1000).toFixed(0) + "k";
-  return "$" + Math.round(n).toLocaleString();
-}
-
 function getActivePrice(p) {
   if (p.activePrice === "surge") return parseFloat((p.price * 1.12).toFixed(2));
   if (p.activePrice === "undercut") return parseFloat((p.price * 0.96).toFixed(2));
@@ -60,7 +59,7 @@ export default function EnginePage() {
   const [activeTab, setActiveTab] = useState("control");
   const [scheduling, setScheduling] = useState({
     enabled: false,
-    frequency: "manual", // manual, hourly, daily, weekly
+    frequency: "manual",
     scheduledTime: "09:00",
     maxProducts: 100,
     autoStop: false,
@@ -72,7 +71,7 @@ export default function EnginePage() {
     marginThreshold: 40,
     lowStockAlert: true,
     priceDropAlert: true,
-    notifyChannels: ["app"], // app, email, webhook
+    notifyChannels: ["app"],
   });
   const [selectedPreset, setSelectedPreset] = useState("balanced");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -176,30 +175,30 @@ export default function EnginePage() {
       {/* Tab Navigation */}
       <s-box padding="400" background="bg-surface-secondary" borderRadius="300" style={{ marginBottom: "16px" }}>
         <s-inline gap="200">
-          <s-button 
-            variant={activeTab === "control" ? "primary" : "tertiary"} 
-            size="slim" 
+          <s-button
+            variant={activeTab === "control" ? "primary" : "tertiary"}
+            size="slim"
             onClick={() => setActiveTab("control")}
           >
             Control Panel
           </s-button>
-          <s-button 
-            variant={activeTab === "monitoring" ? "primary" : "tertiary"} 
-            size="slim" 
+          <s-button
+            variant={activeTab === "monitoring" ? "primary" : "tertiary"}
+            size="slim"
             onClick={() => setActiveTab("monitoring")}
           >
             Monitoring
           </s-button>
-          <s-button 
-            variant={activeTab === "scheduling" ? "primary" : "tertiary"} 
-            size="slim" 
+          <s-button
+            variant={activeTab === "scheduling" ? "primary" : "tertiary"}
+            size="slim"
             onClick={() => setActiveTab("scheduling")}
           >
             Scheduling
           </s-button>
-          <s-button 
-            variant={activeTab === "alerts" ? "primary" : "tertiary"} 
-            size="slim" 
+          <s-button
+            variant={activeTab === "alerts" ? "primary" : "tertiary"}
+            size="slim"
             onClick={() => setActiveTab("alerts")}
           >
             Alerts
@@ -504,267 +503,3 @@ export default function EnginePage() {
     </s-page>
   );
 }
-
-// Monitoring Dashboard Component
-function MonitoringDashboard({ stats, products, running }) {
-  const highScoringProducts = products.filter(p => p.score >= 80).length;
-  const trendingProducts = products.filter(p => p.trend > 10).length;
-  const importedProducts = products.filter(p => p.imported).length;
-
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 16 }}>
-      <s-card>
-        <s-box padding="400">
-          <s-text variant="headingSm">Performance Metrics</s-text>
-          <div style={{ marginTop: 12 }}>
-            <MetricRow label="High scoring products" value={highScoringProducts} total={products.length} />
-            <MetricRow label="Trending products" value={trendingProducts} total={products.length} />
-            <MetricRow label="Imported products" value={importedProducts} total={products.length} />
-            <MetricRow label="Success rate" value={stats.products > 0 ? Math.round((stats.deals / stats.products) * 100) : 0} suffix="%" />
-          </div>
-        </s-box>
-      </s-card>
-      <s-card>
-        <s-box padding="400">
-          <s-text variant="headingSm">Revenue Projection</s-text>
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 24, fontWeight: 700, color: "var(--p-color-text-success)", marginBottom: 4 }}>
-              {fmt$(stats.projRevenue)}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--p-color-text-secondary)" }}>
-              Projected monthly revenue based on current products
-            </div>
-          </div>
-        </s-box>
-      </s-card>
-      <s-card>
-        <s-box padding="400">
-          <s-text variant="headingSm">Engine Status</s-text>
-          <div style={{ marginTop: 12 }}>
-            <StatusBadge running={running} />
-            <div style={{ marginTop: 8, fontSize: 11, color: "var(--p-color-text-secondary)" }}>
-              {running ? "Engine is actively processing" : "Engine is idle"}
-            </div>
-          </div>
-        </s-box>
-      </s-card>
-      <s-card>
-        <s-box padding="400">
-          <s-text variant="headingSm">Product Lifecycle Distribution</s-text>
-          <div style={{ marginTop: 12, fontSize: 11 }}>
-            {Object.entries({
-              viral: products.filter(p => p.lifecycle === 'viral').length,
-              growing: products.filter(p => p.lifecycle === 'growing').length,
-              peak: products.filter(p => p.lifecycle === 'peak').length,
-              mature: products.filter(p => p.lifecycle === 'mature').length,
-              dying: products.filter(p => p.lifecycle === 'dying').length,
-            }).filter(([_, count]) => count > 0).map(([stage, count]) => (
-              <div key={stage} style={{ marginBottom: 4, display: "flex", alignItems: "center" }}>
-                <LifecycleBadge lifecycle={stage} />
-                <span style={{ marginLeft: 8 }}>{count} products</span>
-              </div>
-            ))}
-          </div>
-        </s-box>
-      </s-card>
-    </div>
-  );
-}
-
-// Scheduling Configuration Component
-function SchedulingConfig({ scheduling, setScheduling }) {
-  return (
-    <s-card>
-      <s-box padding="400">
-        <s-text variant="headingSm">Automation Scheduling</s-text>
-        <div style={{ marginTop: 12, fontSize: 12 }}>
-          <ConfigToggle label="Enable scheduling" checked={scheduling.enabled} onChange={v => setScheduling(c => ({ ...c, enabled: v }))} />
-          
-          <div style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 8, fontSize: 11, color: "var(--p-color-text-secondary)" }}>Frequency</div>
-            <select 
-              value={scheduling.frequency}
-              onChange={(e) => setScheduling(c => ({ ...c, frequency: e.target.value }))}
-              disabled={!scheduling.enabled}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                borderRadius: 6,
-                border: "1px solid var(--p-color-border)",
-                background: "var(--p-color-bg-surface)",
-                color: "var(--p-color-text)",
-                fontSize: 12,
-              }}
-            >
-              <option value="manual">Manual</option>
-              <option value="hourly">Hourly</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-            </select>
-          </div>
-
-          {scheduling.frequency !== 'manual' && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ marginBottom: 4, fontSize: 11, color: "var(--p-color-text-secondary)" }}>Scheduled Time</div>
-              <input
-                type="time"
-                value={scheduling.scheduledTime}
-                onChange={(e) => setScheduling(c => ({ ...c, scheduledTime: e.target.value }))}
-                disabled={!scheduling.enabled}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid var(--p-color-border)",
-                  background: "var(--p-color-bg-surface)",
-                  color: "var(--p-color-text)",
-                  fontSize: 12,
-                }}
-              />
-            </div>
-          )}
-
-          <div style={{ marginTop: 12 }}>
-            <ConfigSlider label="Max products per run" value={scheduling.maxProducts} min={10} max={500} step={10} onChange={v => setScheduling(c => ({ ...c, maxProducts: v }))} />
-          </div>
-
-          <ConfigToggle label="Auto-stop after time limit" checked={scheduling.autoStop} onChange={v => setScheduling(c => ({ ...c, autoStop: v }))} />
-          
-          {scheduling.autoStop && (
-            <ConfigSlider label="Stop after (hours)" value={scheduling.stopAfterHours} min={1} max={24} step={1} onChange={v => setScheduling(c => ({ ...c, stopAfterHours: v }))} />
-          )}
-        </div>
-      </s-box>
-    </s-card>
-  );
-}
-
-// Alerts Configuration Component
-function AlertsConfig({ alerts, setAlerts }) {
-  return (
-    <s-card>
-      <s-box padding="400">
-        <s-text variant="headingSm">Alert Configuration</s-text>
-        <div style={{ marginTop: 12, fontSize: 12 }}>
-          <ConfigToggle label="Enable alerts" checked={alerts.enabled} onChange={v => setAlerts(a => ({ ...a, enabled: v }))} />
-          
-          <div style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 8, fontSize: 11, color: "var(--p-color-text-secondary)" }}>Alert Thresholds</div>
-            <ConfigSlider label="Score threshold" value={alerts.scoreThreshold} min={50} max={95} step={5} onChange={v => setAlerts(a => ({ ...a, scoreThreshold: v }))} />
-            <ConfigSlider label="Margin threshold" value={alerts.marginThreshold} min={20} max={60} step={1} suffix="%" onChange={v => setAlerts(a => ({ ...a, marginThreshold: v }))} />
-          </div>
-
-          <div style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 8, fontSize: 11, color: "var(--p-color-text-secondary)" }}>Alert Types</div>
-            <ConfigToggle label="Low stock alerts" checked={alerts.lowStockAlert} onChange={v => setAlerts(a => ({ ...a, lowStockAlert: v }))} />
-            <ConfigToggle label="Price drop alerts" checked={alerts.priceDropAlert} onChange={v => setAlerts(a => ({ ...a, priceDropAlert: v }))} />
-          </div>
-
-          <div style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 8, fontSize: 11, color: "var(--p-color-text-secondary)" }}>Notification Channels</div>
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <label style={{ fontSize: 11, padding: "4px 8px", borderRadius: 4, background: alerts.notifyChannels.includes("app") ? "var(--p-color-bg-fill-success)" : "var(--p-color-bg-surface)", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={alerts.notifyChannels.includes("app")}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setAlerts(a => ({ ...a, notifyChannels: [...a.notifyChannels, "app"] }));
-                    } else {
-                      setAlerts(a => ({ ...a, notifyChannels: a.notifyChannels.filter(c => c !== "app") }));
-                    }
-                  }}
-                  disabled={!alerts.enabled}
-                />
-                App Notifications
-              </label>
-              <label style={{ fontSize: 11, padding: "4px 8px", borderRadius: 4, background: alerts.notifyChannels.includes("email") ? "var(--p-color-bg-fill-success)" : "var(--p-color-bg-surface)", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={alerts.notifyChannels.includes("email")}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setAlerts(a => ({ ...a, notifyChannels: [...a.notifyChannels, "email"] }));
-                    } else {
-                      setAlerts(a => ({ ...a, notifyChannels: a.notifyChannels.filter(c => c !== "email") }));
-                    }
-                  }}
-                  disabled={!alerts.enabled}
-                />
-                Email
-              </label>
-              <label style={{ fontSize: 11, padding: "4px 8px", borderRadius: 4, background: alerts.notifyChannels.includes("webhook") ? "var(--p-color-bg-fill-success)" : "var(--p-color-bg-surface)", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={alerts.notifyChannels.includes("webhook")}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setAlerts(a => ({ ...a, notifyChannels: [...a.notifyChannels, "webhook"] }));
-                    } else {
-                      setAlerts(a => ({ ...a, notifyChannels: a.notifyChannels.filter(c => c !== "webhook") }));
-                    }
-                  }}
-                  disabled={!alerts.enabled}
-                />
-                Webhook
-              </label>
-            </div>
-          </div>
-        </div>
-      </s-box>
-    </s-card>
-  );
-}
-
-// Additional helper components
-function MetricRow({ label, value, total, suffix = "" }) {
-  const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 11 }}>
-      <span style={{ color: "var(--p-color-text-secondary)" }}>{label}</span>
-      <span>
-        <strong>{value}</strong> / {total} ({percentage}%){suffix && <span> {suffix}</span>}
-      </span>
-    </div>
-  );
-}
-
-function StatusBadge({ running }) {
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 12,
-      background: running ? "var(--p-color-bg-fill-success)" : "var(--p-color-bg-surface-tertiary)",
-      color: running ? "var(--p-color-text-success)" : "var(--p-color-text-secondary)",
-    }}>
-      {running ? "🟢 Running" : "⚪ Idle"}
-    </span>
-  );
-}
-
-// PropTypes for new components
-MetricRow.propTypes = {
-  label: PropTypes.string.isRequired,
-  value: PropTypes.number.isRequired,
-  total: PropTypes.number,
-  suffix: PropTypes.string,
-};
-
-StatusBadge.propTypes = {
-  running: PropTypes.bool.isRequired,
-};
-
-MonitoringDashboard.propTypes = {
-  stats: PropTypes.object.isRequired,
-  products: PropTypes.array.isRequired,
-  running: PropTypes.bool.isRequired,
-};
-
-SchedulingConfig.propTypes = {
-  scheduling: PropTypes.object.isRequired,
-  setScheduling: PropTypes.func.isRequired,
-};
-
-AlertsConfig.propTypes = {
-  alerts: PropTypes.object.isRequired,
-  setAlerts: PropTypes.func.isRequired,
-};

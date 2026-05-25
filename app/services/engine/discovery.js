@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { getNicheConfig } from '../../../engine/data/products.js';
+import { getNicheConfig } from '../../data/products.js';
 
 const PRODUCT_PATTERNS = [
   /\bthis\s+([\w][\w\s]{2,30}?)\s+(?:is|was|has been)\s+(?:amazing|incredible|great|awesome|perfect|viral|trending)/gi,

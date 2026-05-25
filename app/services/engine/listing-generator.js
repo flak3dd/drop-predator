@@ -1,11 +1,34 @@
 /* eslint-disable no-undef */
 export async function generateListing(product) {
+  // Prefer AI Gateway if configured, fall back to direct Anthropic SDK, then template
+  if (process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN) {
+    try {
+      return await gatewayGenerateListing(product);
+    } catch { /* fall through */ }
+  }
   if (process.env.ANTHROPIC_API_KEY) {
     try {
       return await aiGenerateListing(product);
     } catch { /* fall through to template */ }
   }
   return templateListing(product);
+}
+
+async function gatewayGenerateListing(product) {
+  const { getGatewayModel, MODELS } = await import('../ai/gateway.js');
+  const { generateText } = await import('ai');
+  const model = await getGatewayModel(MODELS.smart);
+
+  const result = await generateText({
+    model,
+    system: 'You are a professional e-commerce copywriter specializing in Shopify stores. Return ONLY valid JSON, no markdown fences.',
+    prompt: `Write a complete Shopify product listing for a ${product.cat} store.\n\nProduct: "${product.name}"\nSell price: $${product.price.toFixed(2)}\nCategory: ${product.cat}\nTrend: ${product.trend > 0 ? 'trending up' : product.trend < 0 ? 'declining' : 'stable'} (${product.lifecycle})\nSearch volume: ${product.searches}/mo\nImpulse score: ${product.impulse}/100\nCompetition: ${product.competition || 'medium'}\n\nReturn JSON:\n{\n  "title": "<SEO title max 70 chars>",\n  "description": "<plain text 2-3 sentence description>",\n  "descriptionHtml": "<rich HTML product description>",\n  "bulletPoints": ["<benefit 1>", "<benefit 2>", "<benefit 3>", "<benefit 4>", "<benefit 5>"],\n  "seoTags": ["<tag1>", "<tag2>", "<tag3>", "<tag4>", "<tag5>"],\n  "metaDescription": "<SEO meta description max 160 chars>",\n  "collections": ["<collection 1>", "<collection 2>"],\n  "productType": "<Shopify product type category>"\n}`,
+    maxTokens: 800,
+  });
+
+  const raw = result.text.trim();
+  const listing = JSON.parse(raw.match(/\{.*\}/s)[0]);
+  return { ...listing, aiGenerated: true, gateway: true, productId: product.id, generatedAt: Date.now() };
 }
 
 async function aiGenerateListing(product) {
