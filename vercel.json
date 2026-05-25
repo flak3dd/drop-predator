@@ -2,8 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/drops-tick",
-      "schedule": "0 0 * * *",
-      "comment": "Hobby plan: daily only. Upgrade to Pro for */5 * * * * (5-min cadence)."
+      "schedule": "0 0 * * *"
     }
   ]
 }
