@@ -103,7 +103,7 @@ export async function checkOrderCaps(order, caps = {}) {
     const todayOrders = await prisma.aliOrder.findMany({
       where: {
         shop:    order.shop,
-        status:  { in: ['PLACED', 'SHIPPED'] },
+        status:  { notIn: ['CANCELLED', 'FAILED'] },
         createdAt: { gte: dayStart },
       },
       select: { totalCost: true },
@@ -117,7 +117,9 @@ export async function checkOrderCaps(order, caps = {}) {
         `Daily spend would reach $${newTotal.toFixed(2)} — cap is $${c.maxDailySpendUsd} (already spent $${spent.toFixed(2)} today)`,
       );
     }
-  } catch { /* non-fatal — DB error doesn't block */ }
+  } catch (err) {
+    console.warn('[risk-guard] Daily spend check failed, proceeding cautiously:', err.message);
+  }
 
   return { ok: violations.length === 0, violations };
 }
@@ -181,8 +183,8 @@ export async function checkAliAccountHealth(shop) {
     issues.push(`Account health check error: ${err.message}`);
   }
 
-  const hasBlockers = issues.filter(i => !i.includes('expires in')).length > 0;
-  return { ok: !hasBlockers, issues, warnings };
+  const blockerIssues = issues.filter(i => !i.includes('expires in'));
+  return { ok: blockerIssues.length === 0, issues, warnings };
 }
 
 // ─── Engine Auto-Stop ─────────────────────────────────────────────────────

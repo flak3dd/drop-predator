@@ -25,7 +25,7 @@ export async function generateListing(product, opts = {}) {
   }
   if (process.env.ANTHROPIC_API_KEY) {
     try {
-      return await aiGenerateListing(product);
+      return await aiGenerateListing(product, tier);
     } catch { /* fall through to template */ }
   }
   return templateListing(product);
@@ -64,20 +64,23 @@ async function aiGenerateListing(product) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  const fast = tier === 'fast';
   const msg = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 800,
+    max_tokens: fast ? 400 : 800,
     system: 'You are a professional e-commerce copywriter specializing in Shopify stores. Return ONLY valid JSON, no markdown fences.',
     messages: [{
       role: 'user',
-      content: `Write a complete Shopify product listing for a ${product.cat} store.\n\nProduct: "${product.name}"\nSell price: $${product.price.toFixed(2)}\nCategory: ${product.cat}\nTrend: ${product.trend > 0 ? 'trending up' : product.trend < 0 ? 'declining' : 'stable'} (${product.lifecycle})\nSearch volume: ${product.searches}/mo\nImpulse score: ${product.impulse}/100\nCompetition: ${product.competition || 'medium'}\n\nReturn JSON:\n{\n  "title": "<SEO title max 70 chars>",\n  "description": "<plain text 2-3 sentence description>",\n  "descriptionHtml": "<rich HTML product description>",\n  "bulletPoints": ["<benefit 1>", "<benefit 2>", "<benefit 3>", "<benefit 4>", "<benefit 5>"],\n  "seoTags": ["<tag1>", "<tag2>", "<tag3>", "<tag4>", "<tag5>"],\n  "metaDescription": "<SEO meta description max 160 chars>",\n  "collections": ["<collection 1>", "<collection 2>"],\n  "productType": "<Shopify product type category>"\n}`,
+      content: fast
+        ? `Write a concise Shopify listing for "${product.name}" in ${product.cat}. Price: $${product.price.toFixed(2)}.\nReturn JSON: {"title":"<70 chars>","description":"<2 sentences>","descriptionHtml":"<p>...</p>","bulletPoints":["...","...","..."],"seoTags":["...","...","...","..."],"metaDescription":"<160 chars>","collections":["${product.cat}"],"productType":"${product.cat}"}`
+        : `Write a complete Shopify product listing for a ${product.cat} store.\n\nProduct: "${product.name}"\nSell price: $${product.price.toFixed(2)}\nCategory: ${product.cat}\nTrend: ${product.trend > 0 ? 'trending up' : product.trend < 0 ? 'declining' : 'stable'} (${product.lifecycle})\nSearch volume: ${product.searches}/mo\nImpulse score: ${product.impulse}/100\nCompetition: ${product.competition || 'medium'}\n\nReturn JSON:\n{\n  "title": "<SEO title max 70 chars>",\n  "description": "<plain text 2-3 sentence description>",\n  "descriptionHtml": "<rich HTML product description>",\n  "bulletPoints": ["<benefit 1>", "<benefit 2>", "<benefit 3>", "<benefit 4>", "<benefit 5>"],\n  "seoTags": ["<tag1>", "<tag2>", "<tag3>", "<tag4>", "<tag5>"],\n  "metaDescription": "<SEO meta description max 160 chars>",\n  "collections": ["<collection 1>", "<collection 2>"],\n  "productType": "<Shopify product type category>"\n}`,
     }],
   });
 
   const raw = msg.content[0].text.trim();
   const listing = JSON.parse(raw.match(/\{.*\}/s)[0]);
 
-  return { ...listing, aiGenerated: true, productId: product.id, generatedAt: Date.now() };
+  return { ...listing, aiGenerated: true, tier, productId: product.id, generatedAt: Date.now() };
 }
 
 function templateListing(product) {

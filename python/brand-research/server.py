@@ -29,7 +29,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 app = FastAPI(
     title="Drop Predator Brand Research",
@@ -37,9 +37,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
@@ -53,7 +54,7 @@ class Product(BaseModel):
     supplier: str = ""
     price: float = 0.0
     cost: float = 0.0
-    sources: list[str] = []
+    sources: list[str] = Field(default_factory=list)
 
 
 class AnalyzeRequest(BaseModel):
@@ -101,6 +102,8 @@ async def analyze(req: AnalyzeRequest):
 @app.post("/keywords")
 async def keywords_only(req: AnalyzeRequest):
     """Keyword research only — faster than full analysis."""
+    if not req.products:
+        raise HTTPException(status_code=400, detail="products list must not be empty")
     try:
         from brand_agent import _check_adk, _make_agents, _run_adk_agent, _extract_json, MODEL
         if not _check_adk():
@@ -121,6 +124,8 @@ async def keywords_only(req: AnalyzeRequest):
 @app.post("/titles")
 async def titles_only(req: AnalyzeRequest):
     """Title optimisation only — faster than full analysis."""
+    if not req.products:
+        raise HTTPException(status_code=400, detail="products list must not be empty")
     try:
         from brand_agent import _check_adk, _make_agents, _run_adk_agent, _extract_json
         if not _check_adk():

@@ -125,7 +125,11 @@ export const Events = Object.freeze({
 // Wire these up once at app startup. They log key events and can trigger
 // side effects (Sentry, Slack, DB writes) in future.
 
+let _defaultListenersRegistered = false;
+
 export function registerDefaultListeners() {
+  if (_defaultListenersRegistered) return;
+  _defaultListenersRegistered = true;
   on(Events.ENGINE_BUDGET_EXCEEDED, ({ runId, shop, spent, budget }) => {
     console.warn(`[event-bus] 💸 Budget exceeded: ${shop} run=${runId} $${spent.toFixed(4)} > $${budget}`);
   });

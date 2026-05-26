@@ -16,7 +16,7 @@
     {
       "name": "Production Server",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["react-router-serve", "./build/server/nodejs_eyJydW50aW1lIjoibm9kZWpzIn0/index.js"],
+      "runtimeArgs": ["react-router-serve", "./build/server/index.js"],
       "port": 3000,
       "autoPort": true
     },
@@ -28,8 +28,9 @@
     },
     {
       "name": "Brand Research Service",
-      "runtimeExecutable": "python/brand-research/.venv/bin/python",
-      "runtimeArgs": ["python/brand-research/server.py"],
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "server:app", "--port", "8765"],
+      "cwd": "python/brand-research",
       "port": 8765
     }
   ]

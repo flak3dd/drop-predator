@@ -176,8 +176,13 @@ export async function getDsFreight(productId, quantity = 1, opts = {}) {
     cityCode     = null,
   } = opts;
 
+  const numericId = Number(productId);
+  if (!productId || !Number.isFinite(numericId)) {
+    throw new Error(`Valid productId required for freight calculation, got: ${productId}`);
+  }
+
   const queryParams = {
-    product_id:              Number(productId),
+    product_id:              numericId,
     product_num:             quantity,
     country_code:            country,
     send_goods_country_code: 'CN',
@@ -238,13 +243,17 @@ export async function createDsOrder(orderInfo, accessToken) {
       country:        orderInfo.address.countryCode,
       zip:            orderInfo.address.zip,
     },
-    product_items: orderInfo.productItems.map(item => ({
-      product_id:           Number(item.productId),
-      product_count:        item.quantity,
-      sku_attr:             item.skuAttr || '',
-      logistics_service_name: item.shippingService || 'CAINIAO_STANDARD',
-      order_memo:           item.memo || '',
-    })),
+    product_items: orderInfo.productItems.map(item => {
+      const id = Number(item.productId);
+      if (!Number.isFinite(id)) throw new Error(`Invalid productId: ${item.productId}`);
+      return {
+        product_id:             id,
+        product_count:          item.quantity,
+        sku_attr:               item.skuAttr || '',
+        logistics_service_name: item.shippingService || 'CAINIAO_STANDARD',
+        order_memo:             item.memo || '',
+      };
+    }),
   };
 
   if (orderInfo.cpfCode) payload.logistics_address.cpf = orderInfo.cpfCode;

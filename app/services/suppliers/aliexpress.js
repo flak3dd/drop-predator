@@ -108,6 +108,8 @@ export class AliExpressSupplier extends SupplierBase {
             _source:       'aliexpress',
             name:          p.product_title || kw,
             cat:           kw,
+            // target_sale_price is AliExpress retail; DS cost is ~35% of retail (estimate —
+            // affiliate API doesn't expose actual supplier cost). Downstream landed = cost * 1.18.
             price:         parseFloat((retail * 2.5).toFixed(2)),
             cost:          parseFloat((retail * 0.35).toFixed(2)),
             supplier:      p.shop_name || 'AliExpress Seller',

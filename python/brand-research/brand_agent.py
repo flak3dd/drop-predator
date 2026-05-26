@@ -155,6 +155,16 @@ async def run_brand_analysis(niche: str, products: list[dict]) -> dict:
         return_exceptions=True,
     )
 
+    if isinstance(kw_raw, Exception):
+        print(f"[brand-agent] keyword agent error: {kw_raw}")
+        kw_raw = ""
+    if isinstance(title_raw, Exception):
+        print(f"[brand-agent] title agent error: {title_raw}")
+        title_raw = ""
+    if isinstance(insights_raw, Exception):
+        print(f"[brand-agent] insights agent error: {insights_raw}")
+        insights_raw = ""
+
     keywords: list = []
     optimized_titles: list = []
     insights: dict = {}

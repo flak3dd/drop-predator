@@ -114,8 +114,12 @@ export async function loader({ request }) {
       // New API (aliexpress.logistics.ds.trackinginfo.query) requires logistics_no + out_ref.
       // If we don't have a tracking number yet, use aliOrderId as the out_ref to check status.
       const buyerAddr = (() => { try { return JSON.parse(aliOrder.buyerAddress || '{}'); } catch { return {}; } })();
+      if (!aliOrder.trackingNumber) {
+        return Response.json({ tracking: null, message: 'Tracking not yet available', order: aliOrder });
+      }
+
       const tracking = await getDsTracking({
-        logisticsNo: aliOrder.trackingNumber || aliOrder.aliOrderId,
+        logisticsNo: aliOrder.trackingNumber,
         outRef:      aliOrder.aliOrderId,
         serviceName: aliOrder.carrierCode || aliOrder.shippingService || 'CAINIAO_STANDARD',
         toArea:      buyerAddr.countryCode || 'US',
@@ -128,7 +132,7 @@ export async function loader({ request }) {
           data: {
             trackingNumber: tracking.trackingNumber,
             carrierCode:    tracking.carrierCode || aliOrder.carrierCode,
-            status:         'SHIPPED',
+            status:         tracking.status === 'SHIPPED' ? 'SHIPPED' : aliOrder.status,
             shippedAt:      aliOrder.shippedAt || new Date(),
           },
         });

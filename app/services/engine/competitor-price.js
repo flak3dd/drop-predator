@@ -82,11 +82,13 @@ export async function getCompetitorIntel(productName, category, ourCost = 0) {
 export function calcOptimalPrice(intel, ourLandedCost, marginFloor = 35) {
   const { minPrice, avgPrice } = intel;
 
+  if (!ourLandedCost || ourLandedCost <= 0) {
+    return { price: avgPrice, mode: 'margin-floor', margin: null };
+  }
+
   // Strategy 1: undercut cheapest by 4%
   const aggressivePrice = parseFloat((minPrice * 0.96).toFixed(2));
-  const aggressiveMargin = ourLandedCost > 0
-    ? Math.round((aggressivePrice - ourLandedCost) / aggressivePrice * 100)
-    : 40;
+  const aggressiveMargin = Math.round((aggressivePrice - ourLandedCost) / aggressivePrice * 100);
 
   if (aggressiveMargin >= marginFloor) {
     return { price: aggressivePrice, mode: 'comp-undercut', margin: aggressiveMargin };
@@ -94,18 +96,14 @@ export function calcOptimalPrice(intel, ourLandedCost, marginFloor = 35) {
 
   // Strategy 2: blend on avg − 5%
   const blendPrice = parseFloat((avgPrice * 0.95).toFixed(2));
-  const blendMargin = ourLandedCost > 0
-    ? Math.round((blendPrice - ourLandedCost) / blendPrice * 100)
-    : 40;
+  const blendMargin = Math.round((blendPrice - ourLandedCost) / blendPrice * 100);
 
   if (blendMargin >= marginFloor) {
     return { price: blendPrice, mode: 'comp-blend', margin: blendMargin };
   }
 
   // Strategy 3: price for margin floor — we're the premium option
-  const marginPrice = ourLandedCost > 0
-    ? parseFloat((ourLandedCost / (1 - marginFloor / 100)).toFixed(2))
-    : avgPrice;
+  const marginPrice = parseFloat((ourLandedCost / (1 - marginFloor / 100)).toFixed(2));
 
   return { price: marginPrice, mode: 'margin-floor', margin: marginFloor };
 }
