@@ -4,7 +4,8 @@ import cache from './catalog-cache.js';
 import { fullSentimentScan } from './sentiment.js';
 import { runDiscovery } from './discovery.js';
 import { getNicheConfig } from '../../data/products.js';
-import { searchDsProducts } from './aliexpress-ds.js';
+// Note: aliexpress.ds.recommend.feed.get is a curated-feed API, NOT keyword search.
+// Keyword-based product search uses the Affiliate API below (aliexpress.affiliate.product.query).
 
 const SCRAPE_TTL = 60 * 60 * 1000;
 const API_TTL    = 30 * 60 * 1000;
@@ -75,42 +76,17 @@ function aliSign(params, secret) {
 }
 
 /**
- * Fetch from AliExpress using the DS (Dropshipping) API.
- * Falls back to the Affiliate API if the DS API returns nothing.
- * The DS API returns actual dropshipper costs and order counts — better signal.
+ * Fetch from AliExpress using the Affiliate product query API (keyword search).
+ *
+ * The DS recommend feed API (aliexpress.ds.recommend.feed.get) is a curated-feed
+ * API that does NOT support keyword search — it requires a specific feed_name.
+ * For keyword-based product sourcing the correct endpoint is the Affiliate query API.
+ * DS-specific pricing (getDsProductDetails) can enrich individual products after sourcing.
  */
 export async function fetchFromAliExpress(keywords, log) {
   if (!process.env.ALI_APP_KEY || !process.env.ALI_APP_SECRET) return [];
 
-  const cacheKey = `ali-ds:${keywords.slice(0, 4).join('|')}`;
-  const cached = cache.get(cacheKey);
-  if (cached) {
-    log(`AliExpress DS cache hit: ${cached.length} products`);
-    return cached;
-  }
-
-  // ── Try DS Recommend Feed API first ────────────────────────────────────────
-  try {
-    log(`AliExpress DS: searching ${keywords.slice(0, 4).map(k => `"${k}"`).join(', ')}…`);
-    const dsItems = await searchDsProducts(keywords.slice(0, 4), {
-      pageSize: 20,
-      currency: 'USD',
-      country: 'US',
-      language: 'en_US',
-      sort: 'highest_rated_products',
-    });
-
-    if (dsItems.length > 0) {
-      log(`AliExpress DS: ${dsItems.length} products`);
-      cache.set(cacheKey, dsItems, API_TTL);
-      return dsItems;
-    }
-    log('AliExpress DS returned 0 products, falling back to Affiliate API…');
-  } catch (err) {
-    log(`AliExpress DS failed (${err.message}), falling back to Affiliate API…`);
-  }
-
-  // ── Fallback: Affiliate product query API ──────────────────────────────────
+  // ── Affiliate product query API (keyword search) ───────────────────────────
   const allProducts = [];
   for (const kw of keywords.slice(0, 4)) {
     const kwCacheKey = `ali:${kw}`;

@@ -109,17 +109,25 @@ export async function loader({ request }) {
       const cred = await getShopCredential(shop);
       if (!cred) return Response.json({ error: 'AliExpress account not connected' }, { status: 401 });
 
-      // Fetch latest tracking from AliExpress
-      const tracking = await getDsTracking(aliOrder.aliOrderId, cred.accessToken);
+      // Fetch latest tracking from AliExpress.
+      // New API (aliexpress.logistics.ds.trackinginfo.query) requires logistics_no + out_ref.
+      // If we don't have a tracking number yet, use aliOrderId as the out_ref to check status.
+      const buyerAddr = (() => { try { return JSON.parse(aliOrder.buyerAddress || '{}'); } catch { return {}; } })();
+      const tracking = await getDsTracking({
+        logisticsNo: aliOrder.trackingNumber || aliOrder.aliOrderId,
+        outRef:      aliOrder.aliOrderId,
+        serviceName: aliOrder.carrierCode || aliOrder.shippingService || 'CAINIAO_STANDARD',
+        toArea:      buyerAddr.countryCode || 'US',
+      }, cred.accessToken);
 
       // Persist tracking number if newly discovered
-      if (tracking.trackingNumber && !aliOrder.trackingNumber) {
+      if (tracking.trackingNumber && tracking.trackingNumber !== aliOrder.aliOrderId && !aliOrder.trackingNumber) {
         await prisma.aliOrder.update({
           where: { id: orderId },
           data: {
             trackingNumber: tracking.trackingNumber,
-            carrierCode:    tracking.carrierCode,
-            status:         tracking.status === 'FINISH' ? 'DELIVERED' : 'SHIPPED',
+            carrierCode:    tracking.carrierCode || aliOrder.carrierCode,
+            status:         'SHIPPED',
             shippedAt:      aliOrder.shippedAt || new Date(),
           },
         });
