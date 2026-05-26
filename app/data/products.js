@@ -57,7 +57,18 @@ const NICHES = {
   },
 };
 
+/**
+ * @deprecated Mock data for development reference only. Never call in production.
+ * The engine pipeline uses fetchLiveProducts() via live-catalog.js exclusively.
+ * Throws in production to prevent accidental use of fake data.
+ */
 export function getProducts(niche) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'getProducts() returns hardcoded mock data and must not be used in production. ' +
+      'Use fetchLiveProducts() via the engine pipeline instead.'
+    );
+  }
   const n = NICHES[niche] || NICHES.gym;
   return JSON.parse(JSON.stringify(n.products));
 }

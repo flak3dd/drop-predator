@@ -157,6 +157,12 @@ export async function fetchFromAliExpress(keywords, log) {
 }
 
 export async function scrapeAliExpress(keywords, log) {
+  // Disabled by default — violates AliExpress ToS and produces estimated (not real DS) prices.
+  // Set ENABLE_SCRAPE_FALLBACK=1 only for local development/testing.
+  if (!process.env.ENABLE_SCRAPE_FALLBACK) {
+    log('AliExpress HTML scraping is disabled (set ENABLE_SCRAPE_FALLBACK=1 to enable for dev).');
+    return [];
+  }
   const allProducts = [];
   const USER_AGENTS = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
@@ -228,12 +234,20 @@ function matchSignals(productName, signals) {
 function mapToSchema(raw, signals) {
   const id = `${raw._source[0].toUpperCase()}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const cost = raw.cost || 0;
-  const landed = parseFloat((cost * 1.18).toFixed(2));
+  // DS API products (from normalizeDsListItem) supply their own landed estimate.
+  // CJ/Affiliate items don't set raw.landed, so they still use the 1.18 multiplier.
+  const landed = raw.landed
+    ? parseFloat(raw.landed.toFixed(2))
+    : parseFloat((cost * 1.18).toFixed(2));
   const price = raw.price || parseFloat((landed * 2.5).toFixed(2)) || 19.99;
   const margin = price > 0 ? Math.round((price - landed) / price * 100) : 40;
 
   const matched = matchSignals(raw.name, signals);
-  const avgHype = matched.length ? matched.reduce((a, s) => a + s.hypeScore, 0) / matched.length : 30;
+  // When no signals match, seed from supplier score (real supplier validation data)
+  // rather than a hardcoded 30. DS products with supScore=91 → avgHype≈64.
+  const avgHype = matched.length
+    ? matched.reduce((a, s) => a + s.hypeScore, 0) / matched.length
+    : Math.round((raw.supScore || 50) * 0.7);
 
   const trendsSignal = matched.find(s => s.source === 'google-trends');
   const trendVelocity = trendsSignal?.raw?.velocity || 0;
@@ -246,7 +260,11 @@ function mapToSchema(raw, signals) {
   const priceImpulse = Math.max(0, Math.min(100, Math.round(100 - price * 1.5)));
   const impulse = Math.min(100, Math.round(avgHype * 0.6 + priceImpulse * 0.4));
   const searches = trendsSignal ? trendsSignal.score * 150 : 0;
-  const velocity = raw.orders > 0 ? Math.round(raw.orders / 30 * 12) : Math.max(10, Math.round(searches * 0.04));
+  // Do NOT apply a minimum floor — no orders + no trends data should produce velocity=0,
+  // not a fake 10. Projected revenue will be honest rather than inflated.
+  const velocity = raw.orders > 0
+    ? Math.round(raw.orders / 30 * 12)
+    : Math.round(searches * 0.04);
 
   const score = Math.min(100, Math.max(0, Math.round(margin * 0.3 + avgHype * 0.3 + priceImpulse * 0.2 + (raw.supScore || 75) * 0.2)));
 
@@ -261,12 +279,22 @@ function mapToSchema(raw, signals) {
     if (src && !sources.includes(src)) sources.push(src);
   });
 
-  return { id, name: raw.name, cat: raw.cat, score, margin, price, cost, landed, velocity, trend, lifecycle, competition, supplier: raw.supplier, supScore: raw.supScore || 75, moq: raw.moq || 10, discount: 0, sources, searches, impulse, warns, imported: false, negState: 0, activePrice: 'standard' };
+  return {
+    id, name: raw.name, cat: raw.cat, score, margin, price, cost, landed,
+    velocity, trend, lifecycle, competition, supplier: raw.supplier,
+    supScore: raw.supScore || 75, moq: raw.moq || 10, discount: 0, sources,
+    searches, impulse, warns, imported: false, negState: 0, activePrice: 'standard',
+    // Pass DS product ID through so auto-ordering webhook can find the AliExpress product
+    aliProductId: raw.aliProductId || raw._productId || null,
+  };
 }
 
 function discoveryToSchema(disc, signals) {
   const id = disc.id || `D${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-  const price = disc.estimatedPrice || 29.99;
+  // null (template discovery) and 0 (legacy sentinel) both mean "unknown price"
+  const price = (disc.estimatedPrice != null && disc.estimatedPrice > 0)
+    ? disc.estimatedPrice
+    : 29.99;
   const margin = disc.estimatedMargin || 40;
   const cost = parseFloat((price * (1 - margin / 100) / 1.18).toFixed(2));
   const landed = parseFloat((cost * 1.18).toFixed(2));
@@ -317,15 +345,14 @@ export async function fetchLiveProducts(niche, config, log) {
   } catch (err) { log(`AliExpress API unavailable: ${err.message}`); }
 
   if (!rawProducts.length) {
-    try {
-      const scraped = await scrapeAliExpress(keywords, log);
-      if (scraped.length) { rawProducts.push(...scraped); log(`AliExpress scrape: ${scraped.length} total products`); }
-    } catch (err) { log(`AliExpress scrape failed: ${err.message}`); }
-  }
-
-  if (!rawProducts.length) {
-    // All live sources failed — throw so the caller can handle gracefully
-    throw new Error(`No live products found for niche "${niche}". Check CJ_EMAIL/CJ_PASSWORD and ALI_APP_KEY/ALI_APP_SECRET environment variables.`);
+    // HTML scraping removed: fragile, violates AliExpress ToS, returns estimated prices
+    // (not real DS costs), and masks misconfigured API credentials.
+    // Configure CJ_EMAIL + CJ_PASSWORD and/or ALI_APP_KEY + ALI_APP_SECRET to source live products.
+    throw new Error(
+      `No live products found for niche "${niche}". ` +
+      'Configure CJ_EMAIL + CJ_PASSWORD (CJ Dropshipping) or ' +
+      'ALI_APP_KEY + ALI_APP_SECRET (AliExpress DS) in your environment variables.'
+    );
   }
 
   rawProducts = deduplicateProducts(rawProducts);

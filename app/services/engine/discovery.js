@@ -158,7 +158,7 @@ function templateDiscoverProducts(signals, niche, existingNames) {
       category: nicheConf.label || niche,
       estimatedMargin: 40,
       estimatedDemand: data.count >= 5 ? 'high' : data.count >= 3 ? 'medium' : 'low',
-      estimatedPrice: 0,
+      estimatedPrice: null,  // null = unknown price; discoveryToSchema() will apply 29.99 baseline
       riskLevel: avgSentiment > 0.3 ? 'low' : 'medium',
       signalStrength: Math.min(100, Math.round(data.totalHype / data.count) + data.count * 5),
       discoveredAt: Date.now(),
