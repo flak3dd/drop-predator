@@ -1,0 +1,15 @@
+[project]
+name = "drop-predator-brand-research"
+version = "0.1.0"
+description = "ADK-powered brand research & title optimisation service for Drop Predator"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "google-adk>=1.31.0,<2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

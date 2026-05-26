@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { getNicheConfig } from '../../data/products.js';
+import { getNicheConfig, getProducts } from '../../data/products.js';
 import { fetchLiveProducts } from './live-catalog.js';
 
 export async function scoutProducts(niche, config, log) {
@@ -11,8 +11,29 @@ export async function scoutProducts(niche, config, log) {
     log(`Loaded ${products.length} products from live catalog`);
   } catch (err) {
     log(`Live catalog unavailable: ${err.message}`);
-    log('Configure CJ_EMAIL + CJ_PASSWORD or ALI_APP_KEY + ALI_APP_SECRET to enable live dropshipping sourcing.');
-    products = [];
+
+    // ── Dev-mode seed fallback ─────────────────────────────────────────────
+    // When all live sources fail in development, use the static seed products
+    // so the pipeline can be exercised end-to-end without API credentials.
+    // Never activates in production (NODE_ENV=production).
+    if (process.env.NODE_ENV !== 'production') {
+      const seed = getProducts(niche);
+      if (seed.length) {
+        log(`⚠️  Using ${seed.length} DEMO products (dev-only). Add CJ or AliExpress credentials for live data.`);
+        products = seed.map(p => ({
+          ...p,
+          aliProductId: null,
+          sources: p.sources || [],
+          warns: p.warns || [],
+        }));
+      } else {
+        log('Configure CJ_EMAIL + CJ_PASSWORD or ALI_APP_KEY + ALI_APP_SECRET to enable live dropshipping sourcing.');
+        products = [];
+      }
+    } else {
+      log('Configure CJ_EMAIL + CJ_PASSWORD or ALI_APP_KEY + ALI_APP_SECRET to enable live dropshipping sourcing.');
+      products = [];
+    }
   }
 
   if (products._sentimentEnriched) {

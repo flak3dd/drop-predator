@@ -24,9 +24,21 @@ export async function importListings(products, admin) {
 async function importToShopifyAdmin(products, admin) {
   const results = [];
 
-  for (const p of products) {
+  // ── Listing tier assignment ────────────────────────────────────────────
+  // Sorted by score descending (pipeline guarantees this order).
+  // Top 20% → smart (viral copy, full AI)
+  // Next 30% → fast (GPT-4o-mini, shorter prompt)
+  // Bottom 50% → template (no AI tokens)
+  const n = products.length;
+  const smartCount    = Math.max(1, Math.round(n * 0.20));
+  const fastCount     = Math.round(n * 0.30);
+
+  for (let idx = 0; idx < products.length; idx++) {
+    const p = products[idx];
+    const tier = idx < smartCount ? 'smart' : idx < smartCount + fastCount ? 'fast' : 'template';
+
     try {
-      const listing = await generateListing(p);
+      const listing = await generateListing(p, { tier });
       const price = getActivePrice(p).toFixed(2);
 
       const response = await admin.graphql(`

@@ -1,135 +1,20 @@
-/* eslint-disable no-undef */
-import crypto from 'crypto';
+import { supplierRouter } from '../suppliers/index.js';
 import cache from './catalog-cache.js';
 import { fullSentimentScan } from './sentiment.js';
 import { runDiscovery } from './discovery.js';
 import { getNicheConfig } from '../../data/products.js';
-// Note: aliexpress.ds.recommend.feed.get is a curated-feed API, NOT keyword search.
-// Keyword-based product search uses the Affiliate API below (aliexpress.affiliate.product.query).
 
 const SCRAPE_TTL = 60 * 60 * 1000;
-const API_TTL    = 30 * 60 * 1000;
 
-let cjToken = null;
-let cjTokenExpiry = 0;
-
-async function getCJToken() {
-  if (cjToken && Date.now() < cjTokenExpiry) return cjToken;
-
-  const res = await fetch('https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: process.env.CJ_EMAIL, password: process.env.CJ_PASSWORD }),
-  });
-
-  if (!res.ok) throw new Error(`CJ auth failed: ${res.status}`);
-  const data = await res.json();
-  if (!data.data?.accessToken) throw new Error('CJ auth: no token in response');
-
-  cjToken = data.data.accessToken;
-  cjTokenExpiry = Date.now() + 14 * 24 * 60 * 60 * 1000;
-  return cjToken;
-}
-
+// ── Legacy direct fetch exports (kept for backward compat, now delegate to supplierRouter) ──
 export async function fetchFromCJ(keywords, log) {
-  if (!process.env.CJ_EMAIL || !process.env.CJ_PASSWORD) return [];
-  const token = await getCJToken();
-  const allProducts = [];
-
-  for (const kw of keywords.slice(0, 4)) {
-    const cacheKey = `cj:${kw}`;
-    const cached = cache.get(cacheKey);
-    if (cached) { log(`CJ cache hit: "${kw}" (${cached.length} products)`); allProducts.push(...cached); continue; }
-
-    try {
-      log(`CJ search: "${kw}"…`);
-      const url = new URL('https://developers.cjdropshipping.com/api2.0/v1/product/list');
-      url.searchParams.set('productNameEn', kw);
-      url.searchParams.set('pageNum', '1');
-      url.searchParams.set('pageSize', '20');
-
-      const res = await fetch(url.toString(), { headers: { 'CJ-Access-Token': token } });
-      if (!res.ok) { log(`CJ "${kw}" returned ${res.status}`); continue; }
-
-      const data = await res.json();
-      const items = (data.data?.list || []).map(p => ({
-        _source: 'cj', name: p.productNameEn || p.productName || kw, cat: p.categoryName || kw,
-        price: parseFloat(p.sellPrice) || 0, cost: parseFloat(p.productPrice) || 0,
-        supplier: 'CJ – ' + (p.supplierName || 'CJ Dropshipping'), supScore: 80, moq: p.packingMinAmount || 10,
-        images: p.productImage || '', orders: 0, _totalResults: data.data?.total || 0,
-      }));
-
-      cache.set(cacheKey, items, API_TTL);
-      allProducts.push(...items);
-      log(`CJ "${kw}": ${items.length} products`);
-      await sleep(1100);
-    } catch (err) { log(`CJ "${kw}" failed: ${err.message}`); }
-  }
-
-  return allProducts;
+  const cj = supplierRouter._suppliers.find(s => s.name === 'CJ Dropshipping');
+  return cj ? cj.search(keywords, { log }) : [];
 }
 
-function aliSign(params, secret) {
-  const sorted = Object.keys(params).sort();
-  const str = sorted.map(k => `${k}${params[k]}`).join('');
-  return crypto.createHmac('sha256', secret).update(str).digest('hex').toUpperCase();
-}
-
-/**
- * Fetch from AliExpress using the Affiliate product query API (keyword search).
- *
- * The DS recommend feed API (aliexpress.ds.recommend.feed.get) is a curated-feed
- * API that does NOT support keyword search — it requires a specific feed_name.
- * For keyword-based product sourcing the correct endpoint is the Affiliate query API.
- * DS-specific pricing (getDsProductDetails) can enrich individual products after sourcing.
- */
 export async function fetchFromAliExpress(keywords, log) {
-  if (!process.env.ALI_APP_KEY || !process.env.ALI_APP_SECRET) return [];
-
-  // ── Affiliate product query API (keyword search) ───────────────────────────
-  const allProducts = [];
-  for (const kw of keywords.slice(0, 4)) {
-    const kwCacheKey = `ali:${kw}`;
-    const kwCached = cache.get(kwCacheKey);
-    if (kwCached) { log(`AliExpress Affiliate cache hit: "${kw}" (${kwCached.length})`); allProducts.push(...kwCached); continue; }
-
-    try {
-      log(`AliExpress Affiliate: "${kw}"…`);
-      const params = {
-        app_key: process.env.ALI_APP_KEY, method: 'aliexpress.affiliate.product.query',
-        sign_method: 'hmac-sha256', timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-        format: 'json', v: '2.0', keywords: kw, page_size: '20', target_currency: 'USD', target_language: 'EN', sort: 'SALE_PRICE_ASC',
-      };
-      params.sign = aliSign(params, process.env.ALI_APP_SECRET);
-
-      const url = new URL('https://api-sg.aliexpress.com/sync');
-      for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-
-      const res = await fetch(url.toString());
-      if (!res.ok) { log(`AliExpress Affiliate "${kw}" returned ${res.status}`); continue; }
-
-      const data = await res.json();
-      const products = data.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product || [];
-      const total = data.aliexpress_affiliate_product_query_response?.resp_result?.result?.total_record_count || 0;
-
-      const items = products.map(p => {
-        const retail = parseFloat(p.target_sale_price) || parseFloat(p.target_original_price) || 0;
-        return {
-          _source: 'aliexpress', name: p.product_title || kw, cat: kw,
-          price: parseFloat((retail * 2.5).toFixed(2)), cost: parseFloat((retail * 0.35).toFixed(2)),
-          supplier: p.shop_name || 'AliExpress Seller', supScore: 75, moq: 1,
-          images: p.product_main_image_url || '', orders: parseInt(p.lastest_volume) || 0, _totalResults: total,
-        };
-      });
-
-      cache.set(kwCacheKey, items, API_TTL);
-      allProducts.push(...items);
-      log(`AliExpress Affiliate "${kw}": ${items.length} products`);
-      await sleep(500);
-    } catch (err) { log(`AliExpress Affiliate "${kw}" failed: ${err.message}`); }
-  }
-
-  return allProducts;
+  const ali = supplierRouter._suppliers.find(s => s.name === 'AliExpress');
+  return ali ? ali.search(keywords, { log }) : [];
 }
 
 export async function scrapeAliExpress(keywords, log) {
@@ -308,26 +193,20 @@ export async function fetchLiveProducts(niche, config, log) {
   const nicheConf = getNicheConfig(niche);
   const keywords = nicheConf.keywords || [niche];
 
-  let rawProducts = [];
-
+  // ── Route through supplier router (parallel, health-aware, circuit-broken) ──
+  let rawProducts;
   try {
-    const cjProducts = await fetchFromCJ(keywords, log);
-    if (cjProducts.length) { rawProducts.push(...cjProducts); log(`CJ Dropshipping: ${cjProducts.length} total products`); }
-  } catch (err) { log(`CJ Dropshipping unavailable: ${err.message}`); }
-
-  try {
-    const aliProducts = await fetchFromAliExpress(keywords, log);
-    if (aliProducts.length) { rawProducts.push(...aliProducts); log(`AliExpress API: ${aliProducts.length} total products`); }
-  } catch (err) { log(`AliExpress API unavailable: ${err.message}`); }
+    rawProducts = await supplierRouter.search(keywords, { log });
+  } catch (err) {
+    throw new Error(`${err.message} — configure CJ_EMAIL+CJ_PASSWORD, ALI_APP_KEY+ALI_APP_SECRET, or SERPAPI_KEY`);
+  }
 
   if (!rawProducts.length) {
-    // HTML scraping removed: fragile, violates AliExpress ToS, returns estimated prices
-    // (not real DS costs), and masks misconfigured API credentials.
-    // Configure CJ_EMAIL + CJ_PASSWORD and/or ALI_APP_KEY + ALI_APP_SECRET to source live products.
     throw new Error(
       `No live products found for niche "${niche}". ` +
-      'Configure CJ_EMAIL + CJ_PASSWORD (CJ Dropshipping) or ' +
-      'ALI_APP_KEY + ALI_APP_SECRET (AliExpress DS) in your environment variables.'
+      'Configure CJ_EMAIL + CJ_PASSWORD (CJ Dropshipping), ' +
+      'ALI_APP_KEY + ALI_APP_SECRET (AliExpress DS), or ' +
+      'SERPAPI_KEY (1688/Alibaba factory sourcing).',
     );
   }
 

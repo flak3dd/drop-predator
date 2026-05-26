@@ -29,6 +29,7 @@ import {
   exchangeOAuthCode,
 } from '../services/engine/aliexpress-ds.js';
 import { getShopCredential } from '../services/engine/ali-credentials.js';
+import { checkOrderCaps } from '../services/engine/risk-guard.js';
 
 // ─── Loader (GET) ────────────────────────────────────────────────────────────
 
@@ -189,6 +190,16 @@ export async function action({ request }) {
       return Response.json(
         { error: 'AliExpress account not connected. Connect via Settings → AliExpress Account.' },
         { status: 401 },
+      );
+    }
+
+    // ── Risk guard: order value caps ──────────────────────────────────────
+    const totalCost = productItems.reduce((s, item) => s + ((item.cost || 0) + (item.shippingCost || 0)) * (item.quantity || 1), 0);
+    const capCheck = await checkOrderCaps({ shop, totalCost, supplier: 'AliExpress' });
+    if (!capCheck.ok) {
+      return Response.json(
+        { error: `Order blocked by risk guard: ${capCheck.violations.join('; ')}` },
+        { status: 422 },
       );
     }
 

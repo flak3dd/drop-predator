@@ -57,34 +57,79 @@ export async function runProductAgent(task, admin) {
   const tools = await createShopifyTools(admin);
   const toolCalls = [];
 
+  // Fetch winners context before the agent runs — inject into the prompt
+  const winnersContext = await buildWinnersContext(admin, tools);
+
   const result = await generateText({
     model,
-    system: `You are a Shopify product listing specialist.
-Your job is to create complete, optimised product listings end-to-end.
+    system: `You are a viral product launch strategist obsessed with margin and social momentum.
+Your mandate: every listing you create should make people stop scrolling, feel FOMO, and click "Buy Now" before they've finished reading the title.
 
-When given a product to list:
-1. Call createProduct with full details including an SEO-rich description
-2. Call generateSEOFields to get the meta title and meta description
-3. Call updateProduct to attach the SEO fields to the product
-4. Call publishProduct to make it live
+## Non-negotiable rules
+1. NEVER write a title that describes the product — write one that triggers an emotion or desire.
+   Bad:  "Resistance Band Set - 5 Pieces"
+   Good: "The Home Gym Secret PTs Don't Want You To Know"
+2. Open every description with the PAIN POINT, not the product.
+3. Price anchoring is mandatory — always reference what competitors charge.
+4. Tags must include social platform hooks (tiktok-viral, instagram-trending), audience identity markers (gym-girl, plant-parent), and urgency signals (limited-stock, trending-now).
+5. Bullet points = benefits that make the buyer feel smart for buying, not specs.
+6. If a product has a margin below 35%, do NOT create the listing — tell the user to fix the cost first.
 
-Write compelling descriptions (2-3 paragraphs), add 8-12 relevant tags,
-include size/material info where relevant, and price competitively.
-Only publish after SEO fields are applied. Report what you did.`,
+## Process
+1. Call getProducts to see what's already in the store — study any winners (look for products tagged engine-import with many tags or sold count signals).
+2. Identify the EMOTIONAL core of this product: is it status, FOMO, problem-solving, identity, or transformation?
+3. Build the listing around that emotional core.
+4. Call createProduct with a killer title, ruthless description, and 12+ tags.
+5. Call generateSEOFields for meta title and description.
+6. Call updateProduct to attach SEO fields.
+7. Call publishProduct to make it live.
+8. Report the emotional angle you chose, the tags you used, and why the listing will convert.
+
+## What past winners look like in this store
+${winnersContext}`,
     prompt: task,
     tools: {
-      createProduct: tools.createProduct,
-      publishProduct: tools.publishProduct,
-      updateProduct: tools.updateProduct,
+      createProduct:    tools.createProduct,
+      publishProduct:   tools.publishProduct,
+      updateProduct:    tools.updateProduct,
       generateSEOFields: tools.generateSEOFields,
-      getProducts: tools.getProducts,
-      bulkUpdateTags: tools.bulkUpdateTags,
+      getProducts:      tools.getProducts,
+      bulkUpdateTags:   tools.bulkUpdateTags,
     },
-    stopWhen: stepCountIs(8),
+    stopWhen: stepCountIs(10),
     onStepFinish: makeStepHandler(toolCalls),
   });
 
   return makeResult('ProductAgent', result, toolCalls);
+}
+
+/**
+ * Pull the top-performing imported products from the last 60 days and format
+ * them as a short winners brief for the ProductAgent system prompt.
+ * Never throws — returns a placeholder string on any failure.
+ */
+async function buildWinnersContext(admin, tools) {
+  try {
+    // Use the getProducts Shopify tool to find engine-imported products
+    const result = await tools.getProducts.execute({ limit: 50, query: 'tag:engine-import' });
+    const products = result?.products || [];
+    if (!products.length) {
+      return 'No past winners in store yet — you are setting the baseline. Make it count.';
+    }
+
+    // Sort by tag count as a proxy for listing richness, take top 5
+    const winners = products
+      .sort((a, b) => (b.tags?.length || 0) - (a.tags?.length || 0))
+      .slice(0, 5);
+
+    const lines = winners.map(p =>
+      `• "${p.title}" — $${p.priceRange?.minVariantPrice?.amount || '?'} — tags: ${(p.tags || []).slice(0, 6).join(', ')}`,
+    );
+
+    return `Top ${winners.length} existing engine products (study their tag strategy):\n${lines.join('\n')}`;
+  } catch {
+    return 'Winner data unavailable — focus on emotional triggers and margin discipline.';
+  }
 }
 
 // ─── 2. Email Agent ─────────────────────────────────────────────────────────

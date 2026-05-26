@@ -11,12 +11,20 @@
  */
 
 import { scoutProducts } from './scout.js';
-import { negotiateSupplier } from './negotiate.js';
-import { computePricing, getActivePrice } from './price.js';
+import { negotiateSupplier, algorithmicNegotiate } from './negotiate.js';
+import { computePricing, computePricingWithCompetitors, getActivePrice } from './price.js';
 import { importListings } from './importer.js';
 import { enrichWithBrandResearch } from './brand-research.js';
 import { getNicheConfig } from '../../data/products.js';
+import { runRiskChecks, autoStopEngine } from './risk-guard.js';
+import { getCompetitorIntel } from './competitor-price.js';
+import { publish, emit, Events, registerDefaultListeners } from '../core/event-bus.js';
+import { checkBudget, flushCost, logCostSummary, clearRunAccumulator } from '../ai/cost-tracker.js';
+import { allBreakerStatus } from '../circuit-breaker.js';
 import prisma from '../../db.server.js';
+
+// Register default system listeners once at module load
+registerDefaultListeners();
 
 // ─── Per-invocation guard only ─────────────────────────────────────────────
 const activePipelines = new Set();
@@ -160,6 +168,8 @@ export async function startEngine(shop, niche, config = {}, admin = null) {
 
   activePipelines.add(shop);
 
+  emit(Events.ENGINE_STARTED, { runId: engineRun.id, shop, niche });
+
   // Fire-and-forget: the pipeline continues running in the same
   // Vercel Fluid Compute invocation after the HTTP response is sent.
   runPipeline(engineRun.id, shop, niche, mergedConfig, admin)
@@ -299,8 +309,11 @@ async function runPipeline(runId, shop, niche, config, admin = null) {
       const { keywords, insights, enrichedProducts } = await enrichWithBrandResearch(
         niche, raw, msg => log('BRAND', msg),
       );
+      // enrichedProducts may be the same array reference as raw when the service
+      // is offline — copy before clearing to avoid emptying both at once.
+      const enrichedCopy = [...enrichedProducts];
       raw.length = 0;
-      raw.push(...enrichedProducts);
+      raw.push(...enrichedCopy);
       brandKeywords = keywords;
       brandInsights = insights;
 
@@ -316,19 +329,34 @@ async function runPipeline(runId, shop, niche, config, admin = null) {
 
     if (await stopped()) return;
 
+    // ── Phase 1c: Risk checks ────────────────────────────────────────────
+    const riskReport = await runRiskChecks(shop, admin);
+    if (riskReport.warnings.length) {
+      for (const w of riskReport.warnings) await log('RISK', `⚠️  ${w}`, 'warn');
+    }
+    if (!riskReport.ok) {
+      for (const b of riskReport.blockers) await log('RISK', `🛑 BLOCKED: ${b}`, 'warn');
+      await autoStopEngine(shop, riskReport.blockers[0]);
+      return;
+    }
+
     // ── Phase 2: Score + filter ──────────────────────────────────────────
     await setPhase(2, 'scoring & filtering');
     await log('SCOUT', `Margin floor: ${marginFloor}% · Score: ${scoreThreshold} · MOQ: ${moqMax}`);
 
-    const filtered = raw.filter(p => {
-      if (p.score < scoreThreshold) return false;
-      if (p.margin < marginFloor) return false;
-      if (p.moq > moqMax) return false;
-      return true;
-    });
+    const filtered = raw
+      .filter(p => {
+        if (p.score < scoreThreshold) return false;
+        if (p.margin < marginFloor) return false;
+        if (p.moq > moqMax) return false;
+        return true;
+      })
+      .sort((a, b) => b.score - a.score); // highest score first — important for AI tiering
 
     await setPhase(2, `${filtered.length}/${raw.length} passed`);
     await log('SCOUT', `${filtered.length} products passed scoring`);
+
+    emit(Events.ENGINE_PRODUCTS_SCORED, { runId, shop, passed: filtered.length, total: raw.length });
 
     // Persist to DB
     await persistProducts(runId, shop, filtered);
@@ -337,30 +365,48 @@ async function runPipeline(runId, shop, niche, config, admin = null) {
     if (await stopped()) return;
     await sleep(300);
 
-    // ── Phase 3: Negotiate ───────────────────────────────────────────────
+    // ── Phase 3: Negotiate (tiered — AI for top 10%, algorithmic for rest) ───
     if (!negotiationEnabled) {
       await log('SYSTEM', 'Negotiation disabled — skipping');
     } else {
       await setPhase(3, `negotiating ${filtered.length} suppliers`);
-      await log('NEGOTIATE', 'Starting supplier negotiations…');
+
+      // ── Token tiering: only burn AI on the best candidates ───────────
+      // Top 10% (floor 1, cap 8) → full AI negotiation
+      // Bottom 90% → fast algorithmic negotiation (no token spend)
+      const aiTierCount = Math.min(8, Math.max(1, Math.round(filtered.length * 0.10)));
+      await log('NEGOTIATE', `AI-negotiate top ${aiTierCount}/${filtered.length} candidates — rest use algorithmic`);
 
       let dealsClosed = 0;
-      for (const p of filtered) {
+      for (let i = 0; i < filtered.length; i++) {
+        const p = filtered[i];
         if (await stopped()) break;
-        await setPhase(3, p.supplier);
-        await log('NEGOTIATE', `Outreach → ${p.supplier} for "${p.name}"`);
 
-        const deal = await negotiateSupplier(p);
+        const useAI = i < aiTierCount;
+        await setPhase(3, p.supplier);
+
+        let deal;
+        if (useAI) {
+          await log('NEGOTIATE', `[AI] Outreach → ${p.supplier} for "${p.name}"`);
+          deal = await negotiateSupplier(p); // full AI path
+        } else {
+          // Algorithmic — no AI API calls
+          deal = algorithmicNegotiate(p);
+          await log('NEGOTIATE', `[algo] ${p.supplier} — ${deal.discount}% off`, 'negotiate');
+        }
+
         p.negState = 5;
         p.discount = deal.discount;
-        p.landed = deal.landed;
-        p.margin = deal.margin;
+        p.landed   = deal.landed;
+        p.margin   = deal.margin;
         if (deal.moq) p.moq = deal.moq;
         p.aiPowered = deal.aiPowered;
         dealsClosed++;
 
-        const badge = deal.aiPowered ? ' [AI]' : '';
-        await log('NEGOTIATE', `Deal closed${badge}: ${p.supplier} — ${p.discount}% off, MOQ ${p.moq}`, 'negotiate');
+        if (useAI) {
+          const badge = deal.aiPowered ? ' [AI]' : ' [fallback]';
+          await log('NEGOTIATE', `Deal closed${badge}: ${p.supplier} — ${p.discount}% off, MOQ ${p.moq}`, 'negotiate');
+        }
 
         // Update DB product record
         const dbProd = await prisma.engineProduct.findFirst({
@@ -383,27 +429,58 @@ async function runPipeline(runId, shop, niche, config, admin = null) {
           });
         }
 
-        await sleep(autonomyLevel >= 4 ? 400 : 900);
+        await sleep(useAI && autonomyLevel >= 4 ? 400 : 150);
       }
 
       await prisma.engineRun.update({
         where: { id: runId },
         data: { dealsClosed },
       }).catch(() => {});
+
+      // ── Budget check after AI-heavy negotiate phase ─────────────────
+      const budgetCheck = await checkBudget(runId);
+      await flushCost(runId);
+      logCostSummary(runId, (msg) => log('COST', msg));
+      if (!budgetCheck.ok) {
+        await log('COST', `🛑 AI budget exceeded: $${budgetCheck.spent.toFixed(4)} > $${budgetCheck.budget} — stopping`, 'warn');
+        emit(Events.ENGINE_BUDGET_EXCEEDED, { runId, shop, spent: budgetCheck.spent, budget: budgetCheck.budget });
+        await autoStopEngine(shop, `AI budget exceeded ($${budgetCheck.spent.toFixed(4)} > $${budgetCheck.budget})`);
+        return;
+      }
     }
 
     if (await stopped()) return;
 
-    // ── Phase 4: Price ───────────────────────────────────────────────────
+    // ── Phase 4: Price (competitor-benchmarked where possible) ──────────
     if (!pricingEnabled) {
       await log('SYSTEM', 'Pricing disabled — skipping');
     } else {
       await setPhase(4, 'computing prices');
-      await log('PRICE', 'Dynamic pricing engine running…');
+      const hasSerpApi = !!process.env.SERPAPI_KEY;
+      await log('PRICE', hasSerpApi
+        ? 'Competitor-benchmarked dynamic pricing running…'
+        : 'Dynamic pricing running (set SERPAPI_KEY for live competitor benchmarking)…',
+      );
 
       for (const p of filtered) {
-        p.activePrice = computePricing(p, { surgeEnabled });
-        await log('PRICE', `"${p.name}" → ${p.activePrice} mode ($${getActivePrice(p).toFixed(2)})`, 'price');
+        let competitorIntel = null;
+        let finalPrice      = p.price;
+
+        if (hasSerpApi) {
+          try {
+            competitorIntel = await getCompetitorIntel(p.name, p.cat, p.cost);
+          } catch { /* non-fatal */ }
+        }
+
+        const pricingResult = computePricingWithCompetitors(p, competitorIntel, { surgeEnabled });
+        p.activePrice      = pricingResult.mode;
+        p.competitorPrice  = pricingResult.price;
+        finalPrice         = pricingResult.price;
+
+        const compNote = pricingResult.competitorAvg
+          ? ` (comp avg $${pricingResult.competitorAvg.toFixed(2)})`
+          : '';
+        await log('PRICE', `"${p.name}" → ${p.activePrice} $${finalPrice.toFixed(2)}${compNote}`, 'price');
 
         const dbProd = await prisma.engineProduct.findFirst({
           where: { engineRunId: runId, sourceId: p.id },
@@ -411,7 +488,10 @@ async function runPipeline(runId, shop, niche, config, admin = null) {
         if (dbProd) {
           await prisma.engineProduct.update({
             where: { id: dbProd.id },
-            data: { activePrice: p.activePrice },
+            data: {
+              activePrice: p.activePrice,
+              price:       finalPrice, // update to competitor-benchmarked price
+            },
           });
         }
       }
@@ -452,20 +532,44 @@ async function runPipeline(runId, shop, niche, config, admin = null) {
 
     // ── Phase 6: Done ────────────────────────────────────────────────────
     await setPhase(6, `${filtered.length} products ready`);
-    await log('SYSTEM', `Pipeline complete. ${filtered.length} products live.`);
+
+    const finalBudget = await checkBudget(runId);
+    await flushCost(runId);
+    logCostSummary(runId, (msg) => log('COST', msg));
+    clearRunAccumulator(runId);
+
+    // Log circuit breaker status so operators can see service health
+    const cbStatus = allBreakerStatus().filter(b => b.state !== 'CLOSED');
+    if (cbStatus.length) {
+      await log('SYSTEM', `Circuit breakers: ${cbStatus.map(b => `${b.name}=${b.state}`).join(', ')}`);
+    }
+
+    await log('SYSTEM', `Pipeline complete. ${filtered.length} products live. AI spend: $${finalBudget.spent.toFixed(4)}`);
     await flushLogs(runId);
+
+    const stats = {
+      products:   filtered.length,
+      avgMargin:  calcAvgMargin(filtered),
+      dealsClosed: filtered.filter(p => p.negState === 5).length,
+      aiSpend:    finalBudget.spent,
+    };
 
     await prisma.engineRun.update({
       where: { id: runId },
-      data: { status: 'COMPLETED', endedAt: new Date(), phase: 6 },
+      data:  { status: 'COMPLETED', endedAt: new Date(), phase: 6 },
     }).catch(() => {});
+
+    emit(Events.ENGINE_COMPLETE, { runId, shop, stats });
 
   } catch (err) {
     await log('ERROR', err.message, 'warn');
     await flushLogs(runId);
+    await flushCost(runId).catch(() => {});
+    clearRunAccumulator(runId);
+    emit(Events.ENGINE_ERROR, { runId, shop, error: err.message });
     await prisma.engineRun.update({
       where: { id: runId },
-      data: { status: 'ERROR', endedAt: new Date(), phaseSub: err.message },
+      data:  { status: 'ERROR', endedAt: new Date(), phaseSub: err.message },
     }).catch(() => {});
   }
 }
