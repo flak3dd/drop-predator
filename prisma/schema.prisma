@@ -80,7 +80,7 @@ model EngineRun {
   id          String   @id @default(uuid())
   shop        String
   niche       String
-  status      String   @default("RUNNING")
+  status      String   @default("QUEUED")
   phase       Int      @default(0)
   phaseSub    String   @default("")
   config      String   @default("{}")
@@ -88,16 +88,29 @@ model EngineRun {
   dealsClosed     Int      @default(0)
   sessionRev      Int      @default(0)
   brandResearch   String   @default("{}")
-  aiCost          Float    @default(0)     // Accumulated AI spend in USD for this run
-  aiBudget        Float    @default(2.0)   // Hard cap — engine pauses if aiCost > aiBudget
+  aiCost          Float    @default(0)
+  aiBudget        Float    @default(2.0)
   startedAt       DateTime @default(now())
   endedAt         DateTime?
   products        EngineProduct[]
+
+  // ── Orchestrator fields ──────────────────────────────────────────────────
+  currentStep     String   @default("")
+  stepHistory     String   @default("[]")
+  stepData        String   @default("{}")
+  lockToken       String?
+  lockExpiresAt   DateTime?
+  lastHeartbeat   DateTime?
+  retryCount      Int      @default(0)
+  webhookUrl      String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([shop, status])
   @@index([shop, startedAt])
+  @@index([shop, lockToken])
+  @@index([status, lockExpiresAt])
 }
 
 model EngineProduct {
