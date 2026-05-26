@@ -85,11 +85,12 @@ model EngineRun {
   phaseSub    String   @default("")
   config      String   @default("{}")
   logs        String   @default("[]")
-  dealsClosed Int      @default(0)
-  sessionRev  Int      @default(0)
-  startedAt   DateTime @default(now())
-  endedAt     DateTime?
-  products    EngineProduct[]
+  dealsClosed     Int      @default(0)
+  sessionRev      Int      @default(0)
+  brandResearch   String   @default("{}")
+  startedAt       DateTime @default(now())
+  endedAt         DateTime?
+  products        EngineProduct[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -129,6 +130,9 @@ model EngineProduct {
   aiNegotiated      Boolean  @default(false)
   imported          Boolean  @default(false)
   shopifyProductId  String?
+  seoTitle          String?
+  brandKeywords     String   @default("[]")
+  aliProductId      String?  // AliExpress DS product ID for auto-fulfillment
   listing           ProductListing?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -159,4 +163,75 @@ model ProductListing {
   generatedAt      DateTime @default(now())
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+// ─── AliExpress DS Integration ──────────────────────────────────────────────
+
+/// Stores per-shop OAuth2 credentials for the AliExpress DS API.
+/// Obtained via the "Connect AliExpress" OAuth flow in Settings.
+model AliCredential {
+  id                 String   @id @default(uuid())
+  shop               String   @unique
+  accessToken        String
+  refreshToken       String
+  accessTokenExpiry  DateTime
+  refreshTokenExpiry DateTime
+  aliUserId          String   @default("")
+  aliUserNick        String   @default("")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([shop])
+}
+
+/// Tracks AliExpress DS orders placed from Shopify order events.
+/// Created when a Shopify order is paid and auto-fulfillment is active,
+/// or when the merchant manually triggers "Order from AliExpress".
+model AliOrder {
+  id              String   @id @default(uuid())
+  shop            String
+
+  // Shopify side
+  shopifyOrderId  String               // Shopify order GID or numeric ID
+  shopifyOrderNum String   @default("") // Human-readable #1001
+
+  // AliExpress side
+  aliOrderId      String?              // Set after successful order placement
+  aliProductId    String   @default("")
+  productName     String
+  quantity        Int      @default(1)
+  skuAttr         String   @default("")
+  shippingService String   @default("CAINIAO_STANDARD")
+
+  // Costs
+  productCost     Float    @default(0)
+  shippingCost    Float    @default(0)
+  totalCost       Float    @default(0)
+  currency        String   @default("USD")
+
+  // Shipping address (JSON, mirrors Shopify address)
+  buyerAddress    String   @default("{}")
+
+  // Fulfillment status
+  status          String   @default("PENDING")
+  // PENDING → PLACING → PLACED → SHIPPED → DELIVERED | FAILED | CANCELLED
+
+  // Tracking
+  trackingNumber  String?
+  trackingUrl     String?
+  carrierCode     String?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+
+  // Error info
+  errorCode       String?
+  errorMsg        String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([shop, status])
+  @@index([shopifyOrderId])
+  @@index([aliOrderId])
+  @@index([shop, createdAt])
 }

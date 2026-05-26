@@ -9,7 +9,7 @@ const smallInputStyle = {
 /** Returns a colour token and label based on stock vs allocated quantity. */
 function stockLevel(totalInventory, allocatedQuantity) {
   if (totalInventory === null || totalInventory === undefined) {
-    return { color: "#6d7175", label: "—" };
+    return { color: "#888780", label: "—" };
   }
   const ratio = allocatedQuantity > 0 ? totalInventory / allocatedQuantity : 1;
   if (totalInventory === 0) return { color: "#d72c0d", label: "Out of stock" };
@@ -75,13 +75,13 @@ export function ProductCard({ product, liveData, fetcher, readonly }) {
             </span>
 
             {/* Allocated */}
-            <span style={{ fontSize: 12, color: "#6d7175" }}>
+            <span style={{ fontSize: 12, color: "#888780" }}>
               {product.allocatedQuantity} allocated
             </span>
 
             {/* Sold estimate (only when active: allocated > inventory) */}
             {inv !== null && product.allocatedQuantity > 0 && inv < product.allocatedQuantity && (
-              <span style={{ fontSize: 12, color: "#6d7175" }}>
+              <span style={{ fontSize: 12, color: "#888780" }}>
                 ~{product.allocatedQuantity - inv} sold
               </span>
             )}
@@ -95,12 +95,12 @@ export function ProductCard({ product, liveData, fetcher, readonly }) {
               </span>
             )}
             {priceDisplay && (
-              <span style={{ fontSize: 12, color: "#6d7175" }}>
+              <span style={{ fontSize: 12, color: "#888780" }}>
                 Shopify: {priceDisplay}
               </span>
             )}
             {liveData && (
-              <span style={{ fontSize: 12, color: "#6d7175" }}>
+              <span style={{ fontSize: 12, color: "#888780" }}>
                 {liveData.status}
                 {product.originalPrice && " · prices captured"}
               </span>

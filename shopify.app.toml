@@ -12,27 +12,30 @@ automatically_update_urls_on_dev = true
 api_version = "2026-04"
 
   [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
-
-  [[webhooks.subscriptions]]
   uri = "/webhooks/app/uninstalled"
   topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/update"
+  topics = [ "products/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/products/delete"
   topics = [ "products/delete" ]
 
   [[webhooks.subscriptions]]
-  uri = "/webhooks/products/update"
-  topics = [ "products/update" ]
+  uri = "/webhooks/orders/paid"
+  topics = [ "orders/paid" ]
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_products,write_products,read_inventory,write_inventory,read_orders,write_orders,read_locations,read_product_listings"
+scopes = "read_inventory,read_locations,read_orders,read_product_listings,read_products,write_inventory,write_orders,write_products"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [ ]
-

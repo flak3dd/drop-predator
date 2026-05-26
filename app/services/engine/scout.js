@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { getProducts, getNicheConfig } from '../../data/products.js';
+import { getNicheConfig } from '../../data/products.js';
 import { fetchLiveProducts } from './live-catalog.js';
 
 export async function scoutProducts(niche, config, log) {
@@ -10,9 +10,9 @@ export async function scoutProducts(niche, config, log) {
     products = await fetchLiveProducts(niche, config, log);
     log(`Loaded ${products.length} products from live catalog`);
   } catch (err) {
-    log(`Live catalog failed (${err.message}), falling back to static catalog`);
-    products = getProducts(niche);
-    log(`Loaded ${products.length} base products from static catalog`);
+    log(`Live catalog unavailable: ${err.message}`);
+    log('Configure CJ_EMAIL + CJ_PASSWORD or ALI_APP_KEY + ALI_APP_SECRET to enable live dropshipping sourcing.');
+    products = [];
   }
 
   if (products._sentimentEnriched) {

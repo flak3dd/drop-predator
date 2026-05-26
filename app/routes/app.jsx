@@ -1,7 +1,8 @@
-import { Outlet, useLoaderData, useRouteError } from "react-router";
+import { Outlet, useLoaderData, useRouteError, useLocation } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate, IS_DEV_BYPASS } from "../shopify.server";
+import logoUrl from "../assets/ccreids_logo_modern.svg";
 
 export const loader = async ({ request }) => {
   if (!IS_DEV_BYPASS) {
@@ -21,7 +22,7 @@ export default function App() {
     window.shopify = {
       toast: {
         show: (msg) =>
-          console.log(`%c[Toast] ${msg}`, "color:#00b906;font-weight:bold"),
+          console.log(`%c[Toast] ${msg}`, "color:#5B4FE0;font-weight:bold"),
       },
       config: { apiKey: "" },
     };
@@ -29,25 +30,65 @@ export default function App() {
 
   return (
     <AppProvider embedded={!devBypass} apiKey={apiKey}>
-      {devBypass && (
-        <div style={{
-          background: "#1a1a2e", color: "#f0a500", fontSize: 11, fontFamily: "monospace",
-          padding: "6px 16px", borderBottom: "1px solid #f0a50044",
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <span>⚡ DEV BYPASS</span>
-          <span style={{ opacity: 0.6 }}>— auth skipped · shop: y01186-25.myshopify.com</span>
-        </div>
+      {devBypass ? (
+        <DevNav />
+      ) : (
+        <s-app-nav>
+          <s-link href="/app">Dashboard</s-link>
+          <s-link href="/app/drops">Drops</s-link>
+          <s-link href="/app/engine">Engine</s-link>
+          <s-link href="/app/pilot">AI Pilot</s-link>
+          <s-link href="/app/settings">Settings</s-link>
+        </s-app-nav>
       )}
-      <s-app-nav>
-        <s-link href="/app">Dashboard</s-link>
-        <s-link href="/app/drops">Drops</s-link>
-        <s-link href="/app/engine">Engine</s-link>
-        <s-link href="/app/pilot">AI Pilot</s-link>
-        <s-link href="/app/settings">Settings</s-link>
-      </s-app-nav>
       <Outlet />
     </AppProvider>
+  );
+}
+
+/* ── Dev-bypass navigation bar ─────────────────────────────────────────────── */
+
+const NAV_LINKS = [
+  { href: "/app",          label: "Dashboard" },
+  { href: "/app/drops",    label: "Drops" },
+  { href: "/app/engine",   label: "Engine" },
+  { href: "/app/pilot",    label: "AI Pilot" },
+  { href: "/app/settings", label: "Settings" },
+];
+
+function DevNav() {
+  const location = useLocation();
+  return (
+    <nav className="dp-dev-nav">
+      {/* Brand: logo + wordmark */}
+      <a href="/app" className="dp-dev-nav__logo-wrap">
+        <img src={logoUrl} alt="CCREIDS" className="dp-dev-nav__logo-img" />
+        <span className="dp-dev-nav__wordmark">Drop Predator</span>
+      </a>
+
+      <span className="dp-dev-nav__divider" />
+
+      {/* Nav links */}
+      {NAV_LINKS.map(({ href, label }) => {
+        const active =
+          location.pathname === href ||
+          (href !== "/app" && location.pathname.startsWith(href));
+        return (
+          <a
+            key={href}
+            href={href}
+            className={`dp-dev-nav__link${active ? " dp-dev-nav__link--active" : ""}`}
+          >
+            {label}
+          </a>
+        );
+      })}
+
+      <span className="dp-dev-nav__spacer" />
+
+      {/* Environment badge */}
+      <span className="dp-dev-nav__env">DEV · ccreids.myshopify.com</span>
+    </nav>
   );
 }
 

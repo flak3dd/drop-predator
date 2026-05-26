@@ -3,16 +3,22 @@ import { getActivePrice } from './price.js';
 import { generateListing } from './listing-generator.js';
 import prisma from '../../db.server.js';
 
+/**
+ * Import products into Shopify as draft listings.
+ * Requires the `admin` GraphQL client from authenticate.admin().
+ * Products are never silently simulated — if no admin is provided the call
+ * returns an explicit error so the caller can surface it to the user.
+ */
 export async function importListings(products, admin) {
-  if (admin) {
-    return importToShopifyAdmin(products, admin);
+  if (!admin) {
+    return {
+      ok: false,
+      platform: 'none',
+      error: 'Shopify admin context required. Import products via the engine UI Import button.',
+      results: products.map(p => ({ id: p.id, ok: false, error: 'no admin context' })),
+    };
   }
-  return {
-    ok: true,
-    platform: 'none',
-    message: 'No store connection. Use the Shopify admin integration to import.',
-    results: products.map(p => ({ id: p.id, ok: true, simulated: true })),
-  };
+  return importToShopifyAdmin(products, admin);
 }
 
 async function importToShopifyAdmin(products, admin) {

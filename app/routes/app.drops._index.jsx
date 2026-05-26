@@ -2,16 +2,16 @@ import { useLoaderData, useNavigate } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { StatusBadge } from "../components/StatusBadge";
 
-const STATUS_LABELS = {
-  DRAFT: "Draft",
-  SCHEDULED: "Scheduled",
-  ACTIVE: "Active",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-};
-
-const FILTERS = ["ALL", "DRAFT", "SCHEDULED", "ACTIVE", "COMPLETED", "CANCELLED"];
+const FILTERS = [
+  { key: "ALL",       label: "All" },
+  { key: "ACTIVE",    label: "Active" },
+  { key: "SCHEDULED", label: "Scheduled" },
+  { key: "DRAFT",     label: "Draft" },
+  { key: "COMPLETED", label: "Completed" },
+  { key: "CANCELLED", label: "Cancelled" },
+];
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -19,9 +19,7 @@ export const loader = async ({ request }) => {
   const status = url.searchParams.get("status");
 
   const where = { shop: session.shop };
-  if (status && status !== "ALL") {
-    where.status = status;
-  }
+  if (status && status !== "ALL") where.status = status;
 
   const drops = await prisma.drop.findMany({
     where,
@@ -38,83 +36,52 @@ export default function DropsIndex() {
 
   return (
     <s-page heading="Drops">
-      <s-button
-        slot="primary-action"
-        onClick={() => navigate("/app/drops/new")}
-      >
+      <s-button slot="primary-action" onClick={() => navigate("/app/drops/new")}>
         Create Drop
       </s-button>
 
+      {/* ── Filter bar ── */}
       <s-section>
-        <s-stack direction="inline" gap="tight">
-          {FILTERS.map((s) => (
-            <s-button
-              key={s}
-              variant={currentStatus === s ? "primary" : "tertiary"}
-              onClick={() =>
-                navigate(s === "ALL" ? "/app/drops" : `/app/drops?status=${s}`)
-              }
+        <div className="dp-filter-bar">
+          {FILTERS.map(({ key, label }) => (
+            <button
+              key={key}
+              className={`dp-filter-btn${currentStatus === key ? " dp-filter-btn--active" : ""}`}
+              onClick={() => navigate(key === "ALL" ? "/app/drops" : `/app/drops?status=${key}`)}
             >
-              {s === "ALL" ? "All" : STATUS_LABELS[s]}
-            </s-button>
+              {label}
+            </button>
           ))}
-        </s-stack>
+        </div>
       </s-section>
 
+      {/* ── Drop list ── */}
       <s-section>
         {drops.length === 0 ? (
-          <s-box
-            padding="loose"
-            borderWidth="base"
-            borderRadius="base"
-            background="subdued"
-          >
-            <s-stack direction="block" gap="base">
-              <s-text type="strong">
-                {currentStatus === "ALL"
-                  ? "No drops yet"
-                  : `No ${STATUS_LABELS[currentStatus]?.toLowerCase()} drops`}
-              </s-text>
-              <s-paragraph>
-                {currentStatus === "ALL"
-                  ? "Create your first product drop to get started."
-                  : "Try a different filter or create a new drop."}
-              </s-paragraph>
-              {currentStatus === "ALL" && (
-                <s-button onClick={() => navigate("/app/drops/new")}>
-                  Create your first drop
-                </s-button>
-              )}
-            </s-stack>
-          </s-box>
+          <div className="dp-empty">
+            <div className="dp-empty__icon">
+              {currentStatus === "ALL" ? "📭" : currentStatus === "ACTIVE" ? "🟢" : "📋"}
+            </div>
+            <div className="dp-empty__title">
+              {currentStatus === "ALL"
+                ? "No drops yet"
+                : `No ${FILTERS.find(f => f.key === currentStatus)?.label?.toLowerCase() ?? currentStatus.toLowerCase()} drops`}
+            </div>
+            <div className="dp-empty__desc">
+              {currentStatus === "ALL"
+                ? "Create your first product drop to get started with limited releases and flash sales."
+                : "Try a different filter or create a new drop."}
+            </div>
+            {currentStatus === "ALL" && (
+              <s-button onClick={() => navigate("/app/drops/new")}>
+                Create your first drop
+              </s-button>
+            )}
+          </div>
         ) : (
           <s-stack direction="block" gap="base">
             {drops.map((drop) => (
-              <s-box
-                key={drop.id}
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-              >
-                <s-stack direction="block" gap="tight">
-                  <s-stack direction="inline" gap="base">
-                    <s-link href={`/app/drops/${drop.id}`} style={{ flex: 1 }}>
-                      <s-text type="strong">{drop.title}</s-text>
-                    </s-link>
-                    <s-text>
-                      {STATUS_LABELS[drop.status] || drop.status}
-                    </s-text>
-                  </s-stack>
-                  <s-text>
-                    {drop._count.products} product
-                    {drop._count.products !== 1 ? "s" : ""}
-                    {drop.scheduledAt &&
-                      ` · Scheduled: ${new Date(drop.scheduledAt).toLocaleDateString()}`}
-                    {drop.startedAt &&
-                      ` · Started: ${new Date(drop.startedAt).toLocaleDateString()}`}
-                  </s-text>
-                </s-stack>
-              </s-box>
+              <DropCard key={drop.id} drop={drop} />
             ))}
           </s-stack>
         )}
@@ -123,6 +90,50 @@ export default function DropsIndex() {
   );
 }
 
-export const headers = (headersArgs) => {
-  return boundary.headers(headersArgs);
-};
+function DropCard({ drop }) {
+  const productCount = drop._count.products;
+  return (
+    <div className="dp-drop-card">
+      {/* Title row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <s-link href={`/app/drops/${drop.id}`} style={{ flex: 1, fontWeight: 600, fontSize: 14, textDecoration: "none" }}>
+          {drop.title}
+        </s-link>
+        <StatusBadge status={drop.status} />
+      </div>
+
+      {/* Meta row */}
+      <div className="dp-drop-meta">
+        <span>
+          {productCount} product{productCount !== 1 ? "s" : ""}
+        </span>
+        {drop.scheduledAt && (
+          <>
+            <span style={{ opacity: 0.4 }}>·</span>
+            <span>Starts {new Date(drop.scheduledAt).toLocaleDateString()}</span>
+          </>
+        )}
+        {drop.scheduledEndAt && (
+          <>
+            <span style={{ opacity: 0.4 }}>·</span>
+            <span>Ends {new Date(drop.scheduledEndAt).toLocaleDateString()}</span>
+          </>
+        )}
+        {drop.startedAt && !drop.scheduledAt && (
+          <>
+            <span style={{ opacity: 0.4 }}>·</span>
+            <span>Started {new Date(drop.startedAt).toLocaleDateString()}</span>
+          </>
+        )}
+        {drop.completedAt && (
+          <>
+            <span style={{ opacity: 0.4 }}>·</span>
+            <span>Completed {new Date(drop.completedAt).toLocaleDateString()}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export const headers = (headersArgs) => boundary.headers(headersArgs);

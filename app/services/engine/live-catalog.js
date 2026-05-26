@@ -3,7 +3,8 @@ import crypto from 'crypto';
 import cache from './catalog-cache.js';
 import { fullSentimentScan } from './sentiment.js';
 import { runDiscovery } from './discovery.js';
-import { getProducts, getNicheConfig } from '../../data/products.js';
+import { getNicheConfig } from '../../data/products.js';
+import { searchDsProducts } from './aliexpress-ds.js';
 
 const SCRAPE_TTL = 60 * 60 * 1000;
 const API_TTL    = 30 * 60 * 1000;
@@ -73,17 +74,51 @@ function aliSign(params, secret) {
   return crypto.createHmac('sha256', secret).update(str).digest('hex').toUpperCase();
 }
 
+/**
+ * Fetch from AliExpress using the DS (Dropshipping) API.
+ * Falls back to the Affiliate API if the DS API returns nothing.
+ * The DS API returns actual dropshipper costs and order counts — better signal.
+ */
 export async function fetchFromAliExpress(keywords, log) {
   if (!process.env.ALI_APP_KEY || !process.env.ALI_APP_SECRET) return [];
-  const allProducts = [];
 
+  const cacheKey = `ali-ds:${keywords.slice(0, 4).join('|')}`;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    log(`AliExpress DS cache hit: ${cached.length} products`);
+    return cached;
+  }
+
+  // ── Try DS Recommend Feed API first ────────────────────────────────────────
+  try {
+    log(`AliExpress DS: searching ${keywords.slice(0, 4).map(k => `"${k}"`).join(', ')}…`);
+    const dsItems = await searchDsProducts(keywords.slice(0, 4), {
+      pageSize: 20,
+      currency: 'USD',
+      country: 'US',
+      language: 'en_US',
+      sort: 'highest_rated_products',
+    });
+
+    if (dsItems.length > 0) {
+      log(`AliExpress DS: ${dsItems.length} products`);
+      cache.set(cacheKey, dsItems, API_TTL);
+      return dsItems;
+    }
+    log('AliExpress DS returned 0 products, falling back to Affiliate API…');
+  } catch (err) {
+    log(`AliExpress DS failed (${err.message}), falling back to Affiliate API…`);
+  }
+
+  // ── Fallback: Affiliate product query API ──────────────────────────────────
+  const allProducts = [];
   for (const kw of keywords.slice(0, 4)) {
-    const cacheKey = `ali:${kw}`;
-    const cached = cache.get(cacheKey);
-    if (cached) { log(`AliExpress cache hit: "${kw}" (${cached.length} products)`); allProducts.push(...cached); continue; }
+    const kwCacheKey = `ali:${kw}`;
+    const kwCached = cache.get(kwCacheKey);
+    if (kwCached) { log(`AliExpress Affiliate cache hit: "${kw}" (${kwCached.length})`); allProducts.push(...kwCached); continue; }
 
     try {
-      log(`AliExpress search: "${kw}"…`);
+      log(`AliExpress Affiliate: "${kw}"…`);
       const params = {
         app_key: process.env.ALI_APP_KEY, method: 'aliexpress.affiliate.product.query',
         sign_method: 'hmac-sha256', timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
@@ -95,7 +130,7 @@ export async function fetchFromAliExpress(keywords, log) {
       for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
       const res = await fetch(url.toString());
-      if (!res.ok) { log(`AliExpress "${kw}" returned ${res.status}`); continue; }
+      if (!res.ok) { log(`AliExpress Affiliate "${kw}" returned ${res.status}`); continue; }
 
       const data = await res.json();
       const products = data.aliexpress_affiliate_product_query_response?.resp_result?.result?.products?.product || [];
@@ -111,11 +146,11 @@ export async function fetchFromAliExpress(keywords, log) {
         };
       });
 
-      cache.set(cacheKey, items, API_TTL);
+      cache.set(kwCacheKey, items, API_TTL);
       allProducts.push(...items);
-      log(`AliExpress "${kw}": ${items.length} products`);
+      log(`AliExpress Affiliate "${kw}": ${items.length} products`);
       await sleep(500);
-    } catch (err) { log(`AliExpress "${kw}" failed: ${err.message}`); }
+    } catch (err) { log(`AliExpress Affiliate "${kw}" failed: ${err.message}`); }
   }
 
   return allProducts;
@@ -289,8 +324,8 @@ export async function fetchLiveProducts(niche, config, log) {
   }
 
   if (!rawProducts.length) {
-    log('All live sources failed — falling back to static catalog');
-    return getProducts(niche);
+    // All live sources failed — throw so the caller can handle gracefully
+    throw new Error(`No live products found for niche "${niche}". Check CJ_EMAIL/CJ_PASSWORD and ALI_APP_KEY/ALI_APP_SECRET environment variables.`);
   }
 
   rawProducts = deduplicateProducts(rawProducts);
@@ -300,7 +335,7 @@ export async function fetchLiveProducts(niche, config, log) {
   try {
     signals = await fullSentimentScan({
       subreddits: nicheConf.redditSubs || [], keywords,
-      enableReddit: true, enableHN: false, enableTrends: true, enableTikTok: true,
+      enableReddit: true, enableHN: false, enableTrends: true, enableTikTok: false,
       enableAiAnalysis: !!process.env.ANTHROPIC_API_KEY,
     }, (src, count) => log(`Sentiment: ${src} → ${count} signals`));
     log(`Sentiment scan complete: ${signals.length} total signals`);
@@ -310,8 +345,8 @@ export async function fetchLiveProducts(niche, config, log) {
 
   if (config.enableDiscovery !== false && signals.length > 0) {
     try {
-      const existing = products.concat(getProducts(niche));
-      const disc = await runDiscovery(signals, niche, existing, { enableAi: !!process.env.ANTHROPIC_API_KEY });
+      // Pass live products as context so AI doesn't re-discover what we already found
+      const disc = await runDiscovery(signals, niche, products, { enableAi: !!process.env.ANTHROPIC_API_KEY });
       if (disc.discoveries.length) {
         const discovered = disc.discoveries.slice(0, 3).map(d => discoveryToSchema(d, signals));
         products = products.concat(discovered);

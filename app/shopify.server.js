@@ -34,9 +34,9 @@ const shopify = shopifyApp({
 const DEV_BYPASS = process.env.DEV_BYPASS_AUTH === "true" && process.env.NODE_ENV !== "production";
 
 const DEV_SESSION = {
-  shop: "y01186-25.myshopify.com",
+  shop: "ccreids.myshopify.com",
   accessToken: "dev-bypass-token",
-  id: "offline_y01186-25.myshopify.com",
+  id: "offline_ccreids.myshopify.com",
 };
 
 const DEV_ADMIN = {

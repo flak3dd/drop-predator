@@ -43,6 +43,18 @@ const NICHES = {
       { id:'P4', name:'Catnip wall scratcher', cat:'Cat', score:64, margin:62, price:29.99, cost:6.20, landed:7.90, velocity:112, trend:4, lifecycle:'peak', competition:'medium', supplier:'Ningbo PetGear', supScore:71, moq:40, discount:10, sources:['Pinterest'], searches:4100, impulse:68, warns:[], imported:false, negState:0, activePrice:'standard' },
     ],
   },
+  tech: {
+    label: 'Tech & gadgets',
+    redditSubs: ['gadgets', 'tech', 'mildlyinteresting', 'BuyItForLife'],
+    keywords: ['tech gadget', 'smart home device', 'usb accessory', 'phone accessory'],
+    products: [],
+  },
+  beauty: {
+    label: 'Beauty & skincare',
+    redditSubs: ['SkincareAddiction', 'MakeupAddiction', 'beauty', 'DIYBeauty'],
+    keywords: ['skincare tool', 'beauty device', 'facial roller', 'makeup organizer'],
+    products: [],
+  },
 };
 
 export function getProducts(niche) {

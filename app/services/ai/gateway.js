@@ -80,8 +80,15 @@ export async function getGateway() {
 export const MODELS = {
   /** Fast model for tags, short copy, classification */
   fast: 'openai/gpt-4o-mini',
-  /** Smart model for long descriptions, negotiations, emails */
-  smart: 'anthropic/claude-sonnet-4-6',
+  /**
+   * Smart model for long descriptions, negotiations, emails.
+   * Uses gpt-4o for agentic tool-use (generateText with tools) because
+   * @ai-sdk/gateway v1 has a tool-schema type-field issue with the Anthropic path.
+   * Streaming text (streamText, no tools) still routes fine through anthropic/*.
+   */
+  smart: 'openai/gpt-4o',
+  /** Text-generation model — keeps using Claude for best prose quality */
+  prose: 'anthropic/claude-sonnet-4-6',
   /** Fallback chain if primary model is unavailable */
-  fallbacks: ['anthropic/claude-sonnet-4-6', 'openai/gpt-4o'],
+  fallbacks: ['openai/gpt-4o', 'anthropic/claude-sonnet-4-6'],
 };

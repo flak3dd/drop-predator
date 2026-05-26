@@ -14,7 +14,8 @@ import { scoutProducts } from './scout.js';
 import { negotiateSupplier } from './negotiate.js';
 import { computePricing, getActivePrice } from './price.js';
 import { importListings } from './importer.js';
-import { getProducts } from '../../data/products.js';
+import { enrichWithBrandResearch } from './brand-research.js';
+import { getNicheConfig } from '../../data/products.js';
 import prisma from '../../db.server.js';
 
 // ─── Per-invocation guard only ─────────────────────────────────────────────
@@ -58,6 +59,9 @@ function toUiProduct(p) {
     shopifyProductId: p.shopifyProductId,
     discountImproved: p.discountImproved,
     moqImproved: p.moqImproved,
+    seoTitle: p.seoTitle || null,
+    brandKeywords: (() => { try { return JSON.parse(p.brandKeywords || '[]'); } catch { return []; } })(),
+    aliProductId: p.aliProductId || null,
   };
 }
 
@@ -70,8 +74,7 @@ async function dbSetPhase(runId, phase, phaseSub) {
   }).catch(() => {});
 }
 
-let _logFlushTimer = null;
-const _pendingLogs = new Map(); // runId → { logs: [], timer }
+const _pendingLogs = new Map(); // runId → { logs: [] }
 
 async function dbLog(runId, tag, msg, cls) {
   if (!_pendingLogs.has(runId)) {
@@ -115,11 +118,29 @@ async function dbIsStopped(runId) {
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
+/**
+ * Returns niche configuration metadata (keywords, subreddits, label).
+ * Actual products are discovered live during pipeline execution — CJ Dropshipping
+ * and AliExpress are the primary sources, static fallback only if all APIs fail.
+ */
 export async function getEngineProducts(niche) {
-  return getProducts(niche);
+  const conf = getNicheConfig(niche);
+  return {
+    niche,
+    label: conf.label,
+    keywords: conf.keywords,
+    subreddits: conf.redditSubs,
+    note: 'Run the engine to fetch live products from CJ Dropshipping and AliExpress.',
+    products: [],
+  };
 }
 
-export async function startEngine(shop, niche, config = {}) {
+/**
+ * Start the engine pipeline.
+ * Pass `admin` (Shopify GraphQL client from authenticate.admin) to enable
+ * auto-import in Phase 5 when `importEnabled: true` is set in config.
+ */
+export async function startEngine(shop, niche, config = {}, admin = null) {
   await stopEngine(shop);
 
   const settings = await prisma.setting.findUnique({ where: { shop } });
@@ -141,7 +162,7 @@ export async function startEngine(shop, niche, config = {}) {
 
   // Fire-and-forget: the pipeline continues running in the same
   // Vercel Fluid Compute invocation after the HTTP response is sent.
-  runPipeline(engineRun.id, shop, niche, mergedConfig)
+  runPipeline(engineRun.id, shop, niche, mergedConfig, admin)
     .catch(err => console.error(`[engine] Pipeline error ${shop}:`, err.message))
     .finally(() => activePipelines.delete(shop));
 
@@ -178,6 +199,8 @@ export async function getEngineStatus(shop) {
   const products = dbProducts.map(toUiProduct);
   const logs = (() => { try { return JSON.parse(run.logs || '[]'); } catch { return []; } })();
 
+  const brandResearch = (() => { try { return JSON.parse(run.brandResearch || '{}'); } catch { return {}; } })();
+
   return {
     running: run.status === 'RUNNING',
     phase: run.phase,
@@ -185,6 +208,7 @@ export async function getEngineStatus(shop) {
     niche: run.niche,
     engineRunId: run.id,
     products,
+    brandResearch,
     log: logs.slice(-50),
     stats: {
       products: products.length,
@@ -239,7 +263,7 @@ export async function setPriceMode(shop, productId, mode) {
 
 // ─── Pipeline ──────────────────────────────────────────────────────────────
 
-async function runPipeline(runId, shop, niche, config) {
+async function runPipeline(runId, shop, niche, config, admin = null) {
   const {
     scoreThreshold = 65,
     marginFloor = 35,
@@ -259,12 +283,35 @@ async function runPipeline(runId, shop, niche, config) {
   try {
     // ── Phase 1: Scout ───────────────────────────────────────────────────
     await setPhase(1, 'scanning sources…');
-    await log('SCOUT', `Niche: ${niche} — scanning TikTok · AliExpress · Reddit · Google Trends`);
+    await log('SCOUT', `Niche: ${niche} — sourcing from CJ Dropshipping · AliExpress · Reddit · Google Trends`);
 
     const raw = await scoutProducts(niche, config, msg => log('SCOUT', msg));
 
     await setPhase(1, `found ${raw.length} candidates`);
     await log('SCOUT', `${raw.length} raw candidates located`);
+
+    // ── Phase 1b: Brand Research enrichment (ADK / Gemini) ──────────────
+    // Adds SEO-optimised titles (seoTitle field) and extracts keywords +
+    // market insights. Skipped gracefully when service is not running.
+    let brandKeywords = [];
+    let brandInsights = {};
+    if (raw.length > 0 && config.brandResearch !== false) {
+      const { keywords, insights, enrichedProducts } = await enrichWithBrandResearch(
+        niche, raw, msg => log('BRAND', msg),
+      );
+      raw.length = 0;
+      raw.push(...enrichedProducts);
+      brandKeywords = keywords;
+      brandInsights = insights;
+
+      if (keywords.length || Object.keys(insights).length) {
+        await prisma.engineRun.update({
+          where: { id: runId },
+          data: { brandResearch: JSON.stringify({ keywords, insights }) },
+        }).catch(() => {});
+      }
+    }
+
     await sleep(300);
 
     if (await stopped()) return;
@@ -375,11 +422,13 @@ async function runPipeline(runId, shop, niche, config) {
     // ── Phase 5: Import ──────────────────────────────────────────────────
     if (!importEnabled) {
       await log('SYSTEM', 'Auto-import disabled — products ready to import manually');
+    } else if (!admin) {
+      await log('SYSTEM', 'Auto-import skipped — no Shopify admin context in pipeline. Use the Import button in the UI to push products to your store.');
     } else {
       await setPhase(5, `importing ${filtered.length} listings`);
       await log('IMPORT', 'Creating store listings…');
 
-      const importResult = await importListings(filtered);
+      const importResult = await importListings(filtered, admin);
       for (const r of importResult.results) {
         if (r.ok) {
           await log('IMPORT', `Listed: "${filtered.find(x => x.id === r.id)?.name}"`, 'import');
@@ -463,6 +512,9 @@ async function persistProducts(runId, shop, products) {
           negState: p.negState ?? 0,
           activePrice: p.activePrice || 'standard',
           aiNegotiated: p.aiPowered || false,
+          seoTitle: p.seoTitle || null,
+          brandKeywords: JSON.stringify(p.brandKeywords || []),
+          aliProductId: p.aliProductId || p._productId || null,
         },
       });
     } catch (err) {

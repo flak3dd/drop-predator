@@ -1,4 +1,9 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import enhancementsUrl from "./styles/enhancements.css?url";
+
+export const links = () => [
+  { rel: "stylesheet", href: enhancementsUrl },
+];
 
 export default function App() {
   return (

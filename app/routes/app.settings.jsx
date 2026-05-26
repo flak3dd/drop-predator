@@ -16,50 +16,67 @@ export const loader = async ({ request }) => {
 
   const engineConfig = settings.engineConfig ? JSON.parse(settings.engineConfig) : {};
 
-  return { settings, engineConfig };
+  // AliExpress connection status
+  const aliCred = await prisma.aliCredential.findUnique({ where: { shop: session.shop } });
+  const aliStatus = {
+    connected: !!aliCred,
+    userNick: aliCred?.aliUserNick || null,
+    tokenExpiry: aliCred?.accessTokenExpiry?.toISOString() || null,
+    configured: !!(process.env.ALI_APP_KEY && process.env.ALI_APP_SECRET),
+  };
+
+  return { settings, engineConfig, aliStatus };
 };
 
 export const action = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
+  const section = formData.get("section"); // "behavior" | "engine" | null (legacy full save)
 
-  const autoActivate = formData.get("autoActivate") === "on";
-  const autoRevertPrice = formData.get("autoRevertPrice") === "on";
-  const autoPublish = formData.get("autoPublish") === "on";
+  // Fetch current saved config to avoid wiping the other section
+  const existing = await prisma.setting.findUnique({ where: { shop: session.shop } });
+  const existingEngine = existing?.engineConfig ? JSON.parse(existing.engineConfig) : {};
 
-  // Engine configuration
-  const engineConfig = {
-    scoreThreshold: parseInt(formData.get("scoreThreshold") || "65"),
-    marginFloor: parseInt(formData.get("marginFloor") || "35"),
-    moqMax: parseInt(formData.get("moqMax") || "100"),
-    autonomyLevel: parseInt(formData.get("autonomyLevel") || "3"),
-    negotiationEnabled: formData.get("negotiationEnabled") === "on",
-    pricingEnabled: formData.get("pricingEnabled") === "on",
-    importEnabled: formData.get("importEnabled") === "on",
-    deathPredictor: formData.get("deathPredictor") === "on",
-    surgeEnabled: formData.get("surgeEnabled") === "on",
-  };
+  let updateData = {};
+
+  if (!section || section === "behavior") {
+    updateData.autoActivate = formData.get("autoActivate") === "on";
+    updateData.autoRevertPrice = formData.get("autoRevertPrice") === "on";
+    updateData.autoPublish = formData.get("autoPublish") === "on";
+  }
+
+  if (!section || section === "engine") {
+    const engineConfig = {
+      ...existingEngine,
+      scoreThreshold: parseInt(formData.get("scoreThreshold") || existingEngine.scoreThreshold || "65"),
+      marginFloor: parseInt(formData.get("marginFloor") || existingEngine.marginFloor || "35"),
+      moqMax: parseInt(formData.get("moqMax") || existingEngine.moqMax || "100"),
+      autonomyLevel: parseInt(formData.get("autonomyLevel") || existingEngine.autonomyLevel || "3"),
+      negotiationEnabled: formData.get("negotiationEnabled") === "on",
+      pricingEnabled: formData.get("pricingEnabled") === "on",
+      importEnabled: formData.get("importEnabled") === "on",
+      deathPredictor: formData.get("deathPredictor") === "on",
+      surgeEnabled: formData.get("surgeEnabled") === "on",
+    };
+    updateData.engineConfig = JSON.stringify(engineConfig);
+  }
 
   await prisma.setting.upsert({
     where: { shop: session.shop },
-    update: { autoActivate, autoRevertPrice, autoPublish, engineConfig: JSON.stringify(engineConfig) },
-    create: {
-      shop: session.shop,
-      autoActivate,
-      autoRevertPrice,
-      autoPublish,
-      engineConfig: JSON.stringify(engineConfig),
-    },
+    update: updateData,
+    create: { shop: session.shop, ...updateData },
   });
 
   return { success: "Settings saved" };
 };
 
 export default function Settings() {
-  const { settings, engineConfig } = useLoaderData();
+  const { settings, engineConfig, aliStatus } = useLoaderData();
   const fetcher = useFetcher();
+  const aliFetcher = useFetcher();
   const shopify = useAppBridge();
   const isSubmitting = fetcher.state === "submitting";
+  const aliLoading = aliFetcher.state !== "idle";
 
   useEffect(() => {
     if (fetcher.data?.success) {
@@ -67,10 +84,24 @@ export default function Settings() {
     }
   }, [fetcher.data, shopify]);
 
+  useEffect(() => {
+    if (aliFetcher.data?.oauthUrl) {
+      // Redirect merchant to AliExpress OAuth
+      window.open(aliFetcher.data.oauthUrl, "_blank");
+    }
+    if (aliFetcher.data?.ok) {
+      shopify.toast.show("AliExpress account disconnected");
+    }
+    if (aliFetcher.data?.error) {
+      shopify.toast.show(aliFetcher.data.error, { isError: true });
+    }
+  }, [aliFetcher.data, shopify]);
+
   return (
     <s-page heading="Settings">
       <s-section heading="Drop Behavior">
         <fetcher.Form method="POST">
+          <input type="hidden" name="section" value="behavior" />
           <s-stack direction="block" gap="base">
             <s-box padding="base" borderWidth="base" borderRadius="base">
               <s-stack direction="inline" gap="base">
@@ -154,6 +185,7 @@ export default function Settings() {
 
       <s-section heading="Engine Configuration">
         <fetcher.Form method="POST">
+          <input type="hidden" name="section" value="engine" />
           <s-stack direction="block" gap="base">
             <s-box padding="base" borderWidth="base" borderRadius="base">
               <s-stack direction="block" gap="tight">
@@ -331,6 +363,80 @@ export default function Settings() {
         </fetcher.Form>
       </s-section>
 
+      {/* ── AliExpress Account ───────────────────────────────────────────── */}
+      <s-section heading="AliExpress Account">
+        <s-stack direction="block" gap="base">
+          {!aliStatus.configured && (
+            <s-box padding="base" borderWidth="base" borderRadius="base">
+              <s-stack direction="block" gap="tight">
+                <s-text type="strong" tone="caution">API Keys Not Configured</s-text>
+                <s-text>
+                  Set <code>ALI_APP_KEY</code> and <code>ALI_APP_SECRET</code> in your environment
+                  variables to enable the AliExpress Dropshipping API.
+                </s-text>
+              </s-stack>
+            </s-box>
+          )}
+
+          <s-box padding="base" borderWidth="base" borderRadius="base">
+            <s-stack direction="block" gap="tight">
+              <s-stack direction="inline" gap="base" align="space-between">
+                <s-stack direction="block" gap="tight">
+                  <s-text type="strong">Connection Status</s-text>
+                  <s-text>
+                    {aliStatus.connected
+                      ? `✅ Connected${aliStatus.userNick ? ` as ${aliStatus.userNick}` : ""}${aliStatus.tokenExpiry ? ` · expires ${new Date(aliStatus.tokenExpiry).toLocaleDateString()}` : ""}`
+                      : "Not connected — required to place and track DS orders"}
+                  </s-text>
+                </s-stack>
+              </s-stack>
+
+              <s-stack direction="inline" gap="tight">
+                {!aliStatus.connected ? (
+                  <s-button
+                    variant="primary"
+                    disabled={!aliStatus.configured || aliLoading}
+                    onClick={() =>
+                      aliFetcher.submit(
+                        JSON.stringify({ intent: "connect" }),
+                        { method: "POST", action: "/api/ali", encType: "application/json" }
+                      )
+                    }
+                  >
+                    {aliLoading ? "Connecting…" : "Connect AliExpress Account"}
+                  </s-button>
+                ) : (
+                  <s-button
+                    variant="plain"
+                    tone="critical"
+                    disabled={aliLoading}
+                    onClick={() =>
+                      aliFetcher.submit(
+                        JSON.stringify({ intent: "disconnect" }),
+                        { method: "POST", action: "/api/ali", encType: "application/json" }
+                      )
+                    }
+                  >
+                    Disconnect
+                  </s-button>
+                )}
+              </s-stack>
+            </s-stack>
+          </s-box>
+
+          <s-box padding="base" borderWidth="base" borderRadius="base">
+            <s-stack direction="block" gap="tight">
+              <s-text type="strong">What the DS API enables</s-text>
+              <s-text>• <strong>Product sourcing</strong> — live DS pricing, actual dropshipper cost, order counts</s-text>
+              <s-text>• <strong>Auto-fulfillment</strong> — places AliExpress orders when Shopify orders are paid (autonomy ≥ 4)</s-text>
+              <s-text>• <strong>Freight quotes</strong> — real-time shipping cost before pricing your products</s-text>
+              <s-text>• <strong>Order tracking</strong> — logistics status and tracking number from AliExpress</s-text>
+            </s-stack>
+          </s-box>
+        </s-stack>
+      </s-section>
+
+      {/* ── Drop Lifecycle ────────────────────────────────────────────────── */}
       <s-section heading="Drop Lifecycle">
         <s-stack direction="block" gap="base">
           <s-box padding="base" borderWidth="base" borderRadius="base">

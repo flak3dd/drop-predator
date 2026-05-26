@@ -28,7 +28,7 @@ export async function action({ request }) {
   }
 
   const { streamText } = await import('ai');
-  const model = await getGatewayModel(MODELS.smart);
+  const model = await getGatewayModel(MODELS.prose);
 
   const keywordsText = keywords
     ? `Naturally include these keywords: ${keywords}.`

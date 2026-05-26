@@ -141,21 +141,17 @@ async function scanGoogleTrends(keywords) {
   return signals;
 }
 
+/**
+ * TikTok hashtag scanner — requires TikTok Research API credentials.
+ * TikTok does not offer a public search API; this returns no signals until
+ * TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET are configured and a real
+ * integration is wired here.
+ */
+// eslint-disable-next-line no-unused-vars
 async function scanTikTokHashtags(keywords) {
-  const signals = [];
-  for (const kw of keywords.slice(0, 5)) {
-    const hashtag = kw.replace(/\s+/g, '').toLowerCase();
-    signals.push(createSignal('tiktok', {
-      keyword:   kw,
-      title:     `TikTok hashtag: #${hashtag}`,
-      body:      `Monitoring #${hashtag} for viral signals`,
-      score:     0,
-      sentiment: 0.2,
-      url:       `https://www.tiktok.com/tag/${hashtag}`,
-      raw:       { hashtag },
-    }));
-  }
-  return signals;
+  // No public TikTok API available — return empty to avoid polluting signals
+  // with placeholder data that has no real engagement numbers.
+  return [];
 }
 
 async function aiAnalyzeSentiment(signals) {

@@ -17,7 +17,9 @@ export async function loader({ request }) {
 
   if (intent === "products") {
     const niche = url.searchParams.get("niche") || "gym";
-    return Response.json({ products: await getEngineProducts(niche) });
+    // Returns niche metadata (keywords, subreddits) — live products are populated
+    // by running the engine pipeline, not from a static catalog.
+    return Response.json(await getEngineProducts(niche));
   }
 
   if (intent === "history") {
@@ -60,7 +62,8 @@ export async function action({ request }) {
   switch (intent) {
     case "start": {
       const { niche = "gym", config = {} } = body;
-      const result = await startEngine(session.shop, niche, config);
+      // Pass admin so Phase 5 auto-import works when importEnabled: true
+      const result = await startEngine(session.shop, niche, config, admin);
       return Response.json({ ok: true, ...result });
     }
 

@@ -5,12 +5,23 @@
  * Each agent has a focused system prompt, a curated tool set,
  * and is called by the Orchestrator agent.
  *
- * Uses Vercel AI SDK `generateText` with `maxSteps > 1`
+ * Uses Vercel AI SDK v5 `generateText` with `stopWhen: stepCountIs(N)`
  * for agentic loops — the model keeps calling tools until done.
+ * NOTE: AI SDK v5 replaced maxSteps with stopWhen.
  */
 
 import { getGatewayModel, MODELS } from './gateway.js';
 import { createShopifyTools, createEmailTools, createShippingTools, createMediaTools } from './tools.js';
+
+// Lazy-load stopWhen helpers from AI SDK v5
+let _stepCountIs = null;
+async function getStepCountIs() {
+  if (!_stepCountIs) {
+    const { stepCountIs } = await import('ai');
+    _stepCountIs = stepCountIs;
+  }
+  return _stepCountIs;
+}
 
 // ─── Agent result helper ────────────────────────────────────────────────────
 
@@ -41,6 +52,7 @@ function makeStepHandler(toolCalls) {
 
 export async function runProductAgent(task, admin) {
   const { generateText } = await import('ai');
+  const stepCountIs = await getStepCountIs();
   const model = await getGatewayModel(MODELS.smart);
   const tools = await createShopifyTools(admin);
   const toolCalls = [];
@@ -68,7 +80,7 @@ Only publish after SEO fields are applied. Report what you did.`,
       getProducts: tools.getProducts,
       bulkUpdateTags: tools.bulkUpdateTags,
     },
-    maxSteps: 8,
+    stopWhen: stepCountIs(8),
     onStepFinish: makeStepHandler(toolCalls),
   });
 
@@ -79,6 +91,7 @@ Only publish after SEO fields are applied. Report what you did.`,
 
 export async function runEmailAgent(task) {
   const { generateText } = await import('ai');
+  const stepCountIs = await getStepCountIs();
   const model = await getGatewayModel(MODELS.smart);
   const tools = await createEmailTools();
   const toolCalls = [];
@@ -103,7 +116,7 @@ Sign off as "Drop Predator Store Team".`,
       sendEmailReply: tools.sendEmailReply,
       classifyEmailUrgency: tools.classifyEmailUrgency,
     },
-    maxSteps: 12,
+    stopWhen: stepCountIs(12),
     onStepFinish: makeStepHandler(toolCalls),
   });
 
@@ -114,6 +127,7 @@ Sign off as "Drop Predator Store Team".`,
 
 export async function runShippingAgent(task) {
   const { generateText } = await import('ai');
+  const stepCountIs = await getStepCountIs();
   const model = await getGatewayModel(MODELS.fast);
   const tools = await createShippingTools();
   const toolCalls = [];
@@ -134,7 +148,7 @@ When asked to configure shipping:
       createShippingRule: tools.createShippingRule,
       getShippingRules: tools.getShippingRules,
     },
-    maxSteps: 10,
+    stopWhen: stepCountIs(10),
     onStepFinish: makeStepHandler(toolCalls),
   });
 
@@ -145,6 +159,7 @@ When asked to configure shipping:
 
 export async function runInventoryAgent(task, admin) {
   const { generateText } = await import('ai');
+  const stepCountIs = await getStepCountIs();
   const model = await getGatewayModel(MODELS.fast);
   const tools = await createShopifyTools(admin);
   const toolCalls = [];
@@ -166,7 +181,7 @@ Be specific with quantities and product names.`,
       getProducts: tools.getProducts,
       getStoreMetrics: tools.getStoreMetrics,
     },
-    maxSteps: 6,
+    stopWhen: stepCountIs(6),
     onStepFinish: makeStepHandler(toolCalls),
   });
 
@@ -190,6 +205,7 @@ Be specific with quantities and product names.`,
  */
 export async function runMediaAgent(task, admin) {
   const { generateText } = await import('ai');
+  const stepCountIs = await getStepCountIs();
   const model = await getGatewayModel(MODELS.smart);
   const mediaTools = await createMediaTools(admin);
   const shopifyTools = await createShopifyTools(admin);
@@ -241,7 +257,7 @@ and which ones you attached or recommend.`,
       removeProductImage: mediaTools.removeProductImage,
       getProducts: shopifyTools.getProducts,
     },
-    maxSteps: 15,
+    stopWhen: stepCountIs(15),
     onStepFinish: makeStepHandler(toolCalls),
   });
 

@@ -121,7 +121,7 @@ export default function NewDrop() {
                   style={{ display: "block", fontWeight: 600, marginBottom: 4, fontSize: 13 }}
                 >
                   Start Date & Time{" "}
-                  <span style={{ fontWeight: 400, color: "#6d7175" }}>(blank = draft)</span>
+                  <span style={{ fontWeight: 400, color: "#888780" }}>(blank = draft)</span>
                 </label>
                 <input
                   id="scheduledAt"
@@ -143,7 +143,7 @@ export default function NewDrop() {
                   style={{ display: "block", fontWeight: 600, marginBottom: 4, fontSize: 13 }}
                 >
                   End Date & Time{" "}
-                  <span style={{ fontWeight: 400, color: "#6d7175" }}>(auto-complete)</span>
+                  <span style={{ fontWeight: 400, color: "#888780" }}>(auto-complete)</span>
                 </label>
                 <input
                   id="scheduledEndAt"
