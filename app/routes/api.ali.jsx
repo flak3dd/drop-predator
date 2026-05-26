@@ -29,6 +29,7 @@ import {
   exchangeOAuthCode,
 } from '../services/engine/aliexpress-ds.js';
 import { getShopCredential } from '../services/engine/ali-credentials.js';
+import { checkOrderCaps } from '../services/engine/risk-guard.js';
 
 // ─── Loader (GET) ────────────────────────────────────────────────────────────
 
@@ -109,17 +110,29 @@ export async function loader({ request }) {
       const cred = await getShopCredential(shop);
       if (!cred) return Response.json({ error: 'AliExpress account not connected' }, { status: 401 });
 
-      // Fetch latest tracking from AliExpress
-      const tracking = await getDsTracking(aliOrder.aliOrderId, cred.accessToken);
+      // Fetch latest tracking from AliExpress.
+      // New API (aliexpress.logistics.ds.trackinginfo.query) requires logistics_no + out_ref.
+      // If we don't have a tracking number yet, use aliOrderId as the out_ref to check status.
+      const buyerAddr = (() => { try { return JSON.parse(aliOrder.buyerAddress || '{}'); } catch { return {}; } })();
+      if (!aliOrder.trackingNumber) {
+        return Response.json({ tracking: null, message: 'Tracking not yet available', order: aliOrder });
+      }
+
+      const tracking = await getDsTracking({
+        logisticsNo: aliOrder.trackingNumber,
+        outRef:      aliOrder.aliOrderId,
+        serviceName: aliOrder.carrierCode || aliOrder.shippingService || 'CAINIAO_STANDARD',
+        toArea:      buyerAddr.countryCode || 'US',
+      }, cred.accessToken);
 
       // Persist tracking number if newly discovered
-      if (tracking.trackingNumber && !aliOrder.trackingNumber) {
+      if (tracking.trackingNumber && tracking.trackingNumber !== aliOrder.aliOrderId && !aliOrder.trackingNumber) {
         await prisma.aliOrder.update({
           where: { id: orderId },
           data: {
             trackingNumber: tracking.trackingNumber,
-            carrierCode:    tracking.carrierCode,
-            status:         tracking.status === 'FINISH' ? 'DELIVERED' : 'SHIPPED',
+            carrierCode:    tracking.carrierCode || aliOrder.carrierCode,
+            status:         tracking.status === 'SHIPPED' ? 'SHIPPED' : aliOrder.status,
             shippedAt:      aliOrder.shippedAt || new Date(),
           },
         });
@@ -181,6 +194,16 @@ export async function action({ request }) {
       return Response.json(
         { error: 'AliExpress account not connected. Connect via Settings → AliExpress Account.' },
         { status: 401 },
+      );
+    }
+
+    // ── Risk guard: order value caps ──────────────────────────────────────
+    const totalCost = productItems.reduce((s, item) => s + ((item.cost || 0) + (item.shippingCost || 0)) * (item.quantity || 1), 0);
+    const capCheck = await checkOrderCaps({ shop, totalCost, supplier: 'AliExpress' });
+    if (!capCheck.ok) {
+      return Response.json(
+        { error: `Order blocked by risk guard: ${capCheck.violations.join('; ')}` },
+        { status: 422 },
       );
     }
 

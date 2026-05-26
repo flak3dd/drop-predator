@@ -1,0 +1,25 @@
+<svg width="100%" viewBox="0 0 690 360" role="img" xmlns="http://www.w3.org/2000/svg" style="">
+  <title style="fill:rgb(0, 0, 0);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">CCREIDS logo — modern minimal redesign</title>
+  <desc style="fill:rgb(0, 0, 0);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">A modern minimal logo for ccreids.com: an open monoline ring forming a C with a forward delivery arrow inside, paired with an airy wide-tracked CCREIDS wordmark and a single-line tagline.</desc>
+
+  <rect x="0" y="0" width="680" height="350" fill="transparent" style="fill:rgba(0, 0, 0, 0);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <!-- ===== MARK: open ring (C) + forward arrow ===== -->
+  <path d="M 377 151 A 50 50 0 1 0 377 85" fill="none" stroke="#1A1A1A" stroke-width="7" stroke-linecap="round" style="fill:none;stroke:rgb(26, 26, 26);color:rgb(0, 0, 0);stroke-width:7px;stroke-linecap:round;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <!-- forward delivery arrow -->
+  <line x1="312" y1="118" x2="352" y2="118" stroke="#5B4FE0" stroke-width="7" stroke-linecap="round" style="fill:rgb(0, 0, 0);stroke:rgb(91, 79, 224);color:rgb(0, 0, 0);stroke-width:7px;stroke-linecap:round;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+  <polyline points="340,104 355,118 340,132" fill="none" stroke="#5B4FE0" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" style="fill:none;stroke:rgb(91, 79, 224);color:rgb(0, 0, 0);stroke-width:7px;stroke-linecap:round;stroke-linejoin:round;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <!-- ===== WORDMARK ===== -->
+  <text x="346" y="244" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="500" font-size="42" letter-spacing="11" fill="#1A1A1A" style="fill:rgb(26, 26, 26);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Helvetica Neue&quot;, Arial, sans-serif;font-size:42px;font-weight:500;text-anchor:middle;dominant-baseline:auto">CCREIDS</text>
+
+  <!-- hairline ===== -->
+  <line x1="220" y1="268" x2="460" y2="268" stroke="#E2E0D8" stroke-width="1" style="fill:rgb(0, 0, 0);stroke:rgb(226, 224, 216);color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <!-- ===== TAGLINE ===== -->
+  <text x="340" y="292" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="400" font-size="11" letter-spacing="2.6" fill="#888780" style="fill:rgb(136, 135, 128);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Helvetica Neue&quot;, Arial, sans-serif;font-size:11px;font-weight:400;text-anchor:middle;dominant-baseline:auto">CURATED CONSUMER RETAIL EXCHANGE  ·  INSTANT DELIVERY SERVICE</text>
+
+  <!-- domain -->
+  <text x="340" y="320" text-anchor="middle" font-family="'Helvetica Neue', Arial, sans-serif" font-weight="500" font-size="11" letter-spacing="3" fill="#5B4FE0" style="fill:rgb(91, 79, 224);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Helvetica Neue&quot;, Arial, sans-serif;font-size:11px;font-weight:500;text-anchor:middle;dominant-baseline:auto">CCREIDS.COM</text>
+</svg>

@@ -88,6 +88,8 @@ model EngineRun {
   dealsClosed     Int      @default(0)
   sessionRev      Int      @default(0)
   brandResearch   String   @default("{}")
+  aiCost          Float    @default(0)     // Accumulated AI spend in USD for this run
+  aiBudget        Float    @default(2.0)   // Hard cap — engine pauses if aiCost > aiBudget
   startedAt       DateTime @default(now())
   endedAt         DateTime?
   products        EngineProduct[]
