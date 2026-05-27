@@ -12,7 +12,7 @@
  */
 
 import { authenticate } from '../shopify.server';
-import { getMonitor } from '../services/intelligence/index.js';
+import { getMonitor } from '../services/intelligence/monitor.server.js';
 import prisma from '../db.server.js';
 
 // ─── Loader (GET) ────────────────────────────────────────────────────────────

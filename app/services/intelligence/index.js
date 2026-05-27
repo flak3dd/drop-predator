@@ -25,16 +25,10 @@ import {
   getOptimizedTitles,
   analyzeProducts,
 } from './brand-research.js';
-import { MarketMonitor } from './monitor.js';
-
-// ─── Singleton monitor instance ──────────────────────────────────────────────
-let _monitor = null;
-
-/** Get or create the market monitor singleton. */
-export function getMonitor() {
-  if (!_monitor) _monitor = new MarketMonitor();
-  return _monitor;
-}
+// NOTE: MarketMonitor lives in monitor.server.js (imports db.server.js).
+// It cannot be imported here — even dynamically — because React Router's Vite
+// plugin forbids .server.js references from non-.server modules.
+// Callers needing getMonitor() should import from './monitor.server.js' directly.
 
 // ─── Convenience facade ─────────────────────────────────────────────────────
 
@@ -153,6 +147,7 @@ export const intelligence = {
 };
 
 // Re-export everything for granular imports
+// (MarketMonitor omitted — use getMonitor() or import monitor.server.js directly)
 export {
   fullSentimentScan,
   quickSentiment,
@@ -165,5 +160,4 @@ export {
   getKeywords,
   getOptimizedTitles,
   analyzeProducts,
-  MarketMonitor,
 };
