@@ -9,8 +9,8 @@
  *   • Identifies catalog gaps and product opportunities
  *   • Persists insights for the Intelligence Dashboard
  *
- * Vercel Cron: every 30 minutes
- *   crons: [{ path: "/api/cron/intelligence", schedule: "*/30 * * * *" }]
+ * Vercel Cron: daily at 6:00 AM UTC
+ *   vercel.json → schedule: "0 6 * * *"
  *
  * Can also be triggered manually for a specific shop:
  *   GET /api/cron/intelligence?shop=my-store.myshopify.com
