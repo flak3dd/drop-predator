@@ -264,6 +264,16 @@ export class MarketMonitor {
   }
 }
 
+// ─── Singleton accessor ─────────────────────────────────────────────────────
+
+let _monitor = null;
+
+/** Get or create the market monitor singleton. */
+export function getMonitor() {
+  if (!_monitor) _monitor = new MarketMonitor();
+  return _monitor;
+}
+
 /**
  * @typedef {Object} MonitorResult
  * @property {string}   shop

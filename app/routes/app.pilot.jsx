@@ -19,6 +19,7 @@ import {
   EmailForm,
   ImageSearchForm,
 } from "../components/pilot/GenerateForms";
+import { ResearchAgent } from "../components/pilot/ResearchAgent";
 
 const AGENTS = [
   { id: "ProductAgent",   label: "Product",   icon: "📦", desc: "Create listings, write descriptions, manage tags" },
@@ -280,6 +281,13 @@ export default function PilotPage() {
             Agent Orchestrator
           </s-button>
           <s-button
+            variant={activeTab === "research" ? "primary" : "tertiary"}
+            size="slim"
+            onClick={() => setActiveTab("research")}
+          >
+            Product Research
+          </s-button>
+          <s-button
             variant={activeTab === "generate" ? "primary" : "tertiary"}
             size="slim"
             onClick={() => setActiveTab("generate")}
@@ -289,7 +297,11 @@ export default function PilotPage() {
         </s-inline>
       </s-box>
 
-      {activeTab === "orchestrator" ? (
+      {activeTab === "research" && (
+        <ResearchAgent />
+      )}
+
+      {activeTab === "orchestrator" && (
         <>
           {/* Stats */}
           <s-box padding="400" background="bg-surface-secondary" borderRadius="300" style={{ marginBottom: "16px" }}>
@@ -593,7 +605,9 @@ export default function PilotPage() {
             </div>
           </div>
         </>
-      ) : (
+      )}
+
+      {activeTab === "generate" && (
         /* ─── AI Generate tab ──────────────────────────────────────────── */
         <>
           <s-box padding="400" background="bg-surface-secondary" borderRadius="300" style={{ marginBottom: "16px" }}>
