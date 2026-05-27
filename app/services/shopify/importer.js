@@ -41,46 +41,82 @@ async function importToShopifyAdmin(products, admin) {
       const listing = await generateListing(p, { tier });
       const price = getActivePrice(p).toFixed(2);
 
-      const response = await admin.graphql(`
-        mutation productCreate($input: ProductInput!) {
-          productCreate(input: $input) {
-            product { id handle title }
+      // Step 1: Create product (ProductCreateInput — no inline variants)
+      const createResponse = await admin.graphql(`
+        mutation productCreate($product: ProductCreateInput!) {
+          productCreate(product: $product) {
+            product {
+              id handle title
+              variants(first: 1) { nodes { id } }
+            }
             userErrors { field message }
           }
         }
       `, {
         variables: {
-          input: {
+          product: {
             title: listing.title || p.name,
             descriptionHtml: listing.descriptionHtml || `<p>${p.name}</p>`,
             vendor: p.supplier || 'Unbranded',
             productType: listing.productType || p.cat,
             tags: (listing.seoTags || []).concat(p.cat, p.lifecycle, 'engine-import'),
-            variants: [{
-              price,
-              sku: `PRED-${p.id}`,
-              inventoryManagement: 'SHOPIFY',
-            }],
           },
         },
       });
 
-      const data = await response.json();
-      const result = data.data?.productCreate;
+      const createData = await createResponse.json();
+      const createResult = createData.data?.productCreate;
 
-      if (result?.userErrors?.length) {
-        results.push({ id: p.id, ok: false, error: result.userErrors[0].message });
-      } else if (result?.product) {
-        // Save listing to database
-        await saveListingToDatabase(p, listing);
-
-        // Mark product as imported
-        await markProductAsImported(p.id, result.product.id);
-
-        results.push({ id: p.id, ok: true, platform: 'shopify', shopifyId: result.product.id, handle: result.product.handle, listing });
-      } else {
-        results.push({ id: p.id, ok: false, error: 'No product in response' });
+      if (createResult?.userErrors?.length) {
+        results.push({ id: p.id, ok: false, error: createResult.userErrors[0].message });
+        continue;
       }
+
+      const product = createResult?.product;
+      if (!product) {
+        results.push({ id: p.id, ok: false, error: 'No product in response' });
+        continue;
+      }
+
+      // Step 2: Update the default variant with price + SKU
+      const defaultVariantId = product.variants?.nodes?.[0]?.id;
+      if (defaultVariantId) {
+        try {
+          const variantResponse = await admin.graphql(`
+            mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+              productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                productVariants { id price }
+                userErrors { field message }
+              }
+            }
+          `, {
+            variables: {
+              productId: product.id,
+              variants: [{
+                id: defaultVariantId,
+                price,
+                sku: `PRED-${p.id}`,
+                inventoryPolicy: 'DENY',
+              }],
+            },
+          });
+          const variantData = await variantResponse.json();
+          const variantErrors = variantData.data?.productVariantsBulkUpdate?.userErrors;
+          if (variantErrors?.length) {
+            console.warn(`Variant update warning for ${p.name}: ${variantErrors[0].message}`);
+          }
+        } catch (varErr) {
+          console.warn(`Variant update failed for ${p.name}: ${varErr.message}`);
+        }
+      }
+
+      // Save listing to database
+      await saveListingToDatabase(p, listing);
+
+      // Mark product as imported
+      await markProductAsImported(p.id, product.id);
+
+      results.push({ id: p.id, ok: true, platform: 'shopify', shopifyId: product.id, handle: product.handle, listing });
     } catch (err) {
       results.push({ id: p.id, ok: false, error: err.message });
     }
