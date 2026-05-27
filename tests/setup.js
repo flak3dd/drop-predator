@@ -30,6 +30,13 @@ export const mockPrisma = {
   session: {
     deleteMany: vi.fn(),
   },
+  aliCredential: {
+    findUnique: vi.fn(),
+  },
+  dataSourceConfig: {
+    findMany: vi.fn(),
+    upsert: vi.fn(),
+  },
   $transaction: vi.fn((fns) => Promise.all(fns)),
 };
 

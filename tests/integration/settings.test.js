@@ -18,6 +18,8 @@ describe("Settings loader", () => {
       autoRevertPrice: true,
       autoPublish: false,
     });
+    mockPrisma.aliCredential.findUnique.mockResolvedValue(null);
+    mockPrisma.dataSourceConfig.findMany.mockResolvedValue([]);
 
     const { loader } = await import("../../app/routes/app.settings.jsx");
 
