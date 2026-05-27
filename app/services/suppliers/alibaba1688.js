@@ -42,7 +42,7 @@ export class Alibaba1688Supplier extends SupplierBase {
       return [];
     }
     const { log = () => {} } = opts;
-    log(`[1688/Alibaba] Searching with SERPAPI_KEY=${process.env.SERPAPI_KEY?.slice(0, 8)}…`);
+    log('[1688/Alibaba] Searching with configured SERPAPI key');
     const allProducts = [];
 
     for (const kw of keywords.slice(0, 3)) {

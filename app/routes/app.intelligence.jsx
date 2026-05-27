@@ -134,7 +134,7 @@ function CrossPlatformCard({ item }) {
       border: "1px solid var(--p-color-border-subdued)",
       borderLeft: `3px solid ${item.sourceCount >= 3 ? "#FF1744" : "#FFB300"}`,
     }}>
-      <div style={{ fontSize: 13, fontWeight: 700 }}>"{item.keyword}"</div>
+      <div style={{ fontSize: 13, fontWeight: 700 }}>{`"${item.keyword}"`}</div>
       <div style={{ display: "flex", gap: 10, marginTop: 4, fontSize: 11, color: "var(--p-color-text-secondary)" }}>
         <span>{item.sources.map(s => SOURCE_ICONS[s] || "📡").join(" ")} {item.sourceCount} platforms</span>
         <span>{item.signalCount} signals</span>
@@ -200,7 +200,7 @@ export default function IntelligencePage() {
       });
       const result = await res.json();
       if (result.ok) {
-        showToast(`Scan complete: ${result.stats.signalCount} signals, ${result.alertCount} alerts`);
+        showToast(`Scan complete: ${result.stats.signalCount} signals, ${result.stats.alertCount} alerts`);
         await poll();
       }
     } catch (err) {

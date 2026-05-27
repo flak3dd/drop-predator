@@ -56,7 +56,12 @@ export async function loader({ request }) {
 export async function action({ request }) {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
-  const body = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
   const { intent } = body;
 
   if (intent === 'scan') {
@@ -75,9 +80,24 @@ export async function action({ request }) {
     const settings = await prisma.setting.findUnique({ where: { shop } });
     const config = settings?.engineConfig ? JSON.parse(settings.engineConfig) : {};
 
-    if (keywords !== undefined) config.monitorKeywords = keywords;
-    if (subreddits !== undefined) config.monitorSubreddits = subreddits;
-    if (enabled !== undefined) config.intelligenceEnabled = enabled;
+    if (keywords !== undefined) {
+      if (!Array.isArray(keywords) || !keywords.every(k => typeof k === 'string')) {
+        return Response.json({ error: 'keywords must be string[]' }, { status: 400 });
+      }
+      config.monitorKeywords = keywords;
+    }
+    if (subreddits !== undefined) {
+      if (!Array.isArray(subreddits) || !subreddits.every(s => typeof s === 'string')) {
+        return Response.json({ error: 'subreddits must be string[]' }, { status: 400 });
+      }
+      config.monitorSubreddits = subreddits;
+    }
+    if (enabled !== undefined) {
+      if (typeof enabled !== 'boolean') {
+        return Response.json({ error: 'enabled must be boolean' }, { status: 400 });
+      }
+      config.intelligenceEnabled = enabled;
+    }
 
     await prisma.setting.upsert({
       where: { shop },

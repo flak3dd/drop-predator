@@ -13,19 +13,21 @@ export async function scoutProducts(niche, config, log) {
     log(`❌ Live catalog failed: ${err.message}`);
 
     // ── Diagnostic: show which env vars are set vs missing ──────────────
-    const envCheck = [
-      ['CJ_EMAIL',       !!process.env.CJ_EMAIL],
-      ['CJ_PASSWORD',    !!process.env.CJ_PASSWORD],
-      ['ALI_APP_KEY',    !!process.env.ALI_APP_KEY],
-      ['ALI_APP_SECRET', !!process.env.ALI_APP_SECRET],
-      ['SERPAPI_KEY',    !!process.env.SERPAPI_KEY],
-    ];
-    const setVars    = envCheck.filter(([, v]) => v).map(([k]) => k);
-    const missingVars = envCheck.filter(([, v]) => !v).map(([k]) => k);
-    log(`📋 Env check — Set: ${setVars.join(', ') || 'none'} | Missing: ${missingVars.join(', ') || 'none'}`);
+    if (process.env.NODE_ENV !== 'production') {
+      const envCheck = [
+        ['CJ_EMAIL',       !!process.env.CJ_EMAIL],
+        ['CJ_PASSWORD',    !!process.env.CJ_PASSWORD],
+        ['ALI_APP_KEY',    !!process.env.ALI_APP_KEY],
+        ['ALI_APP_SECRET', !!process.env.ALI_APP_SECRET],
+        ['SERPAPI_KEY',    !!process.env.SERPAPI_KEY],
+      ];
+      const setVars    = envCheck.filter(([, v]) => v).map(([k]) => k);
+      const missingVars = envCheck.filter(([, v]) => !v).map(([k]) => k);
+      log(`📋 Env check — Set: ${setVars.join(', ') || 'none'} | Missing: ${missingVars.join(', ') || 'none'}`);
+    }
 
     if (process.env.ALI_APP_KEY && !/^\d+$/.test(process.env.ALI_APP_KEY)) {
-      log(`⚠️  ALI_APP_KEY looks wrong — got "${process.env.ALI_APP_KEY.slice(0, 10)}…" but expected a numeric App Key from AliExpress Open Platform`);
+      log('⚠️  ALI_APP_KEY appears malformed — expected a numeric App Key from AliExpress Open Platform');
     }
 
     // ── Dev-mode seed fallback ─────────────────────────────────────────────

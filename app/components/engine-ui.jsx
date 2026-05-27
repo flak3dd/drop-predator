@@ -208,7 +208,7 @@ const MSG_STYLES = {
 export function LogMessage({ msg, cls }) {
   const style = MSG_STYLES[cls] || {};
   // Highlight dollar amounts, percentages, and quoted names
-  const parts = msg.split(/(\$[\d,.]+|[\d.]+%|"[^"]*")/g);
+  const parts = (msg || "").split(/(\$[\d,.]+|[\d.]+%|"[^"]*")/g);
   return (
     <span style={{ color: style.color || "var(--p-color-text)", fontWeight: style.fontWeight || 400 }}>
       {parts.map((part, i) => {
@@ -294,7 +294,12 @@ export function ProcessLog({ logLines = [], running = false, stepHistory = [], c
               fontSize: 10, fontWeight: 600, padding: "1px 8px", borderRadius: 99,
               background: "rgba(255,82,82,0.12)", color: "#FF5252",
               cursor: "pointer",
-            }} onClick={() => setFilter(f => f === "warn" ? "all" : "warn")}>
+            }}
+            role="button"
+            tabIndex={0}
+            onClick={() => setFilter(f => f === "warn" ? "all" : "warn")}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFilter(f => f === "warn" ? "all" : "warn"); } }}
+            >
               {warnCount} warning{warnCount !== 1 ? "s" : ""}
             </span>
           )}

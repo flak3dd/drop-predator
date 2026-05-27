@@ -63,9 +63,10 @@ export class AliExpressSupplier extends SupplierBase {
       return [];
     }
     const { log = () => {}, country = 'US', currency = 'USD' } = opts;
-    // Validate key format before making API calls
+    // Validate key format — must be numeric, not email
     if (!/^\d+$/.test(process.env.ALI_APP_KEY)) {
-      log(`[AliExpress] ⚠️  ALI_APP_KEY="${process.env.ALI_APP_KEY?.slice(0, 6)}…" does not look like a numeric App Key. Get your App Key from https://openservice.aliexpress.com → My Applications.`);
+      log('[AliExpress] Skipped — ALI_APP_KEY is not a valid numeric App Key (get it from https://openservice.aliexpress.com)');
+      return [];
     }
     const allProducts = [];
 

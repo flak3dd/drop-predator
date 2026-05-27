@@ -20,6 +20,13 @@ import { fullSentimentScan } from './sentiment.js';
 import { runDiscovery, crossNicheCorrelation } from './discovery.js';
 import { getNicheConfig } from '../../data/products.js';
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function safeParseJson(raw) {
+  if (!raw) return {};
+  try { return JSON.parse(raw); } catch { return {}; }
+}
+
 // ─── Alert thresholds ────────────────────────────────────────────────────────
 
 const ALERT_THRESHOLDS = {
@@ -60,7 +67,7 @@ export class MarketMonitor {
     try {
       // Load shop's intelligence config
       const settings = await prisma.setting.findUnique({ where: { shop } });
-      const config = settings?.engineConfig ? JSON.parse(settings.engineConfig) : {};
+      const config = safeParseJson(settings?.engineConfig);
       const niche = config.niche || config.lastNiche || 'gym';
       const nicheConf = getNicheConfig(niche);
 
@@ -164,9 +171,6 @@ export class MarketMonitor {
       result.stats.alertCount = result.alerts.length;
       result.stats.opportunityCount = result.opportunities.length;
 
-      // ── 5. Persist to DB ───────────────────────────────────────────────
-      await this.persistInsights(shop, result);
-
     } catch (err) {
       result.alerts.push({
         type: 'monitor_error',
@@ -175,9 +179,16 @@ export class MarketMonitor {
         detail: err.message,
         ts: new Date().toISOString(),
       });
+      result.stats.alertCount = result.alerts.length;
+      result.stats.opportunityCount = result.opportunities.length;
     }
 
+    // Compute duration before persisting so stored history has accurate timing
     result.stats.durationMs = Date.now() - startTime;
+
+    // ── 5. Persist to DB (always, even on error — stores the error alert) ──
+    await this.persistInsights(shop, result);
+
     return result;
   }
 
@@ -188,7 +199,7 @@ export class MarketMonitor {
   async persistInsights(shop, result) {
     try {
       const settings = await prisma.setting.findUnique({ where: { shop } });
-      const config = settings?.engineConfig ? JSON.parse(settings.engineConfig) : {};
+      const config = safeParseJson(settings?.engineConfig);
 
       // Store the latest intelligence report (keep it compact)
       config.latestIntelligence = {
@@ -242,7 +253,7 @@ export class MarketMonitor {
    */
   async getLatest(shop) {
     const settings = await prisma.setting.findUnique({ where: { shop } });
-    const config = settings?.engineConfig ? JSON.parse(settings.engineConfig) : {};
+    const config = safeParseJson(settings?.engineConfig);
     return {
       latest: config.latestIntelligence || null,
       history: config.intelligenceHistory || [],

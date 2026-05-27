@@ -20,22 +20,23 @@ import prisma from '../db.server.js';
 import { getMonitor } from '../services/intelligence/index.js';
 
 export async function loader({ request }) {
-  // Verify cron secret in production
+  // Verify cron secret
   const url = new URL(request.url);
+  const targetShop = url.searchParams.get('shop');
   const cronSecret = request.headers.get('authorization');
+  const isAuthorized = process.env.CRON_SECRET
+    ? cronSecret === `Bearer ${process.env.CRON_SECRET}`
+    : process.env.NODE_ENV !== 'production';
 
-  if (process.env.CRON_SECRET && cronSecret !== `Bearer ${process.env.CRON_SECRET}`) {
-    // Allow manual trigger with shop param for development
-    if (!url.searchParams.get('shop')) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  // In production, always require auth. In non-prod, allow manual single-shop trigger.
+  if (!isAuthorized && !(process.env.NODE_ENV !== 'production' && targetShop)) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const monitor = getMonitor();
   const results = [];
 
   // Single shop mode (manual trigger)
-  const targetShop = url.searchParams.get('shop');
   if (targetShop) {
     const result = await monitor.runCycle(targetShop);
     return Response.json({ ok: true, results: [result] });
