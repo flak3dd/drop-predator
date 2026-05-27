@@ -46,10 +46,12 @@ export const intelligence = {
       enableHN = true,
       enableTrends = true,
       enableTikTok = false,
+      enableInstagram = false,
       enableAiAnalysis = true,
       enableDiscovery = true,
       enableBrandResearch = true,
       existingProducts = [],
+      instagramHashtags = [],
     } = config;
 
     const result = {
@@ -70,6 +72,8 @@ export const intelligence = {
       enableHN,
       enableTrends,
       enableTikTok,
+      enableInstagram,
+      instagramHashtags,
       enableAiAnalysis: enableAiAnalysis && !!process.env.ANTHROPIC_API_KEY,
     }, onProgress);
 

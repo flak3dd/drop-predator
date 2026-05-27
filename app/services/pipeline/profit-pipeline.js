@@ -19,6 +19,8 @@
 
 import { fullSentimentScan, computeHypeScore, crossNicheCorrelation, extractProductMentions } from '../intelligence/index.js';
 import { runDiscovery } from '../intelligence/discovery.js';
+import { scorePurchaseIntent, computeProductIntent } from '../intelligence/intent-scorer.js';
+import { analyzeAdCompetition, adCompetitionMultiplier } from '../intelligence/ad-competition.js';
 import { fetchLiveProducts } from '../engine/live-catalog.js';
 import { computePricingWithCompetitors, getActivePrice } from '../shopify/pricing.js';
 import { generateListing } from '../shopify/listing-generator.js';
@@ -82,10 +84,12 @@ export async function runProfitPipeline({ niche, admin, shop, config = {}, emit 
       signals = await fullSentimentScan({
         subreddits: nicheConf.redditSubs || [],
         keywords,
-        enableReddit: true,
-        enableHN: true,
-        enableTrends: true,
-        enableTikTok: false,
+        enableReddit:    config.enableReddit !== false,
+        enableHN:        config.enableHN !== false,
+        enableTrends:    config.enableTrends !== false,
+        enableTikTok:    config.enableTikTok || false,
+        enableInstagram: config.enableInstagram || false,
+        instagramHashtags: nicheConf.instagramHashtags || [],
         enableAiAnalysis: !!process.env.ANTHROPIC_API_KEY,
       }, (progress) => {
         if (progress?.source) {
@@ -190,6 +194,70 @@ export async function runProfitPipeline({ niche, admin, shop, config = {}, emit 
       const profitPerUnit = (p.margin / 100 * p.price).toFixed(2);
       emit('info', 'tag-tool',
         `✓ "${p.name}" — score: ${p.score}, margin: ${p.margin}%, profit/unit: $${profitPerUnit}, velocity: ${p.velocity}/mo`);
+    }
+
+    // ── Phase 3B: Purchase Intent Scoring ──────────────────────────────────
+    if (signals.length > 0) {
+      emit('tool', 'tag-tool', 'intent_scorer → computing purchase intent from social signals');
+
+      for (const p of validated) {
+        const intent = computeProductIntent(p, signals);
+        p.intentScore = intent.intentScore;
+        p.intentSignals = intent.intentSignals;
+        p.intentBreakdown = intent.intentBreakdown;
+      }
+
+      const highIntent = validated.filter(p => p.intentScore > 65).length;
+      if (highIntent > 0) {
+        emit('agent', 'tag-agent', `${highIntent} products have high purchase intent (>65)`);
+      }
+
+      // Blend intent into sort order if threshold is configured
+      const intentThreshold = config.intentThreshold || 0;
+      if (intentThreshold > 0) {
+        const preFilter = validated.length;
+        const removed = [];
+        for (let i = validated.length - 1; i >= 0; i--) {
+          if (validated[i].intentScore < intentThreshold && validated[i].intentScore > 0) {
+            removed.push(validated.splice(i, 1)[0]);
+          }
+        }
+        if (removed.length > 0) {
+          emit('info', 'tag-tool', `Intent filter: removed ${removed.length} products below threshold ${intentThreshold}`);
+        }
+      }
+
+      // Re-sort blending profit + intent
+      validated.sort((a, b) => {
+        const profitA = (a.margin / 100) * a.price * (a.velocity || 1);
+        const profitB = (b.margin / 100) * b.price * (b.velocity || 1);
+        const intentBoostA = (a.intentScore || 0) / 100;
+        const intentBoostB = (b.intentScore || 0) / 100;
+        const scoreA = profitA * 0.7 + intentBoostA * profitA * 0.3;
+        const scoreB = profitB * 0.7 + intentBoostB * profitB * 0.3;
+        return scoreB - scoreA;
+      });
+    }
+
+    // ── Phase 3C: Ad Competition Analysis ────────────────────────────────
+    if (process.env.SERPAPI_KEY && validated.length > 0) {
+      emit('tool', 'tag-tool', `ad_competition → checking ad density for top ${Math.min(8, validated.length)} products`);
+
+      for (const p of validated.slice(0, 8)) {
+        try {
+          const adResult = await analyzeAdCompetition(p.name, p.cat);
+          const multiplier = adCompetitionMultiplier(adResult);
+          p.adCompetition = adResult;
+          p.score = Math.round(p.score * multiplier);
+
+          if (adResult.risk === 'high' || adResult.risk === 'extreme') {
+            p.warnings = [...(p.warnings || p.warns || []), `ad competition: ${adResult.adDensity}`];
+            emit('warn', 'tag-warn', `"${p.name}" — ${adResult.adDensity} ad market (${adResult.bigBrandCount} big brands)`);
+          } else if (adResult.risk === 'low') {
+            emit('agent', 'tag-agent', `"${p.name}" — low ad competition (opportunity)`);
+          }
+        } catch { /* non-fatal */ }
+      }
     }
 
     stats.phases.validate = Date.now() - phase3Start;

@@ -86,6 +86,43 @@ export const loader = async ({ request }) => {
     }
   }
 
+  // ── Intelligence stats ────────────────────────────────────────────────────
+  let intelStats = { signalCount: 0, alertCount: 0, opportunityCount: 0, lastScan: null };
+  try {
+    const latestScan = await prisma.intelligenceScan.findFirst({
+      where: { shop },
+      orderBy: { createdAt: "desc" },
+      select: { signalCount: true, alertCount: true, opportunityCount: true, createdAt: true },
+    });
+    if (latestScan) {
+      intelStats = {
+        signalCount: latestScan.signalCount,
+        alertCount: latestScan.alertCount,
+        opportunityCount: latestScan.opportunityCount,
+        lastScan: latestScan.createdAt.toISOString(),
+      };
+    }
+  } catch { /* table may not exist yet */ }
+
+  // ── Product stats ────────────────────────────────────────────────────────
+  let productStats = { total: 0, imported: 0, avgScore: 0, avgMargin: 0 };
+  try {
+    const agg = await prisma.engineProduct.aggregate({
+      where: { shop },
+      _count: true,
+      _avg: { score: true, margin: true },
+    });
+    const importedCount = await prisma.engineProduct.count({
+      where: { shop, imported: true },
+    });
+    productStats = {
+      total: agg._count || 0,
+      imported: importedCount,
+      avgScore: Math.round(agg._avg?.score || 0),
+      avgMargin: Math.round(agg._avg?.margin || 0),
+    };
+  } catch { /* empty table is fine */ }
+
   // ── Stats + recent drops ──────────────────────────────────────────────────
   const [totalDrops, activeDrops, scheduledDrops, completedDrops, recentDrops, overdueCount, endingSoonCount] =
     await Promise.all([
@@ -122,11 +159,13 @@ export const loader = async ({ request }) => {
     endingSoonCount,
     hasAutoActivate: autoActivate,
     autoActivated,
+    intelStats,
+    productStats,
   };
 };
 
 export default function Dashboard() {
-  const { stats, recentDrops, overdueCount, endingSoonCount } = useLoaderData();
+  const { stats, recentDrops, overdueCount, endingSoonCount, intelStats, productStats } = useLoaderData();
   const navigate = useNavigate();
 
   return (
@@ -199,6 +238,23 @@ export default function Dashboard() {
           <StatCard label="Completed"     value={stats.completedDrops} variant="done"   icon="✅" />
         </div>
       </s-section>
+
+      {/* ── Intelligence stats ── */}
+      {(intelStats.lastScan || productStats.total > 0) && (
+        <s-section heading="Intelligence & Products">
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <StatCard label="Signals"       value={intelStats.signalCount}      variant="total"  icon="📡" />
+            <StatCard label="Alerts"        value={intelStats.alertCount}       variant={intelStats.alertCount > 0 ? "active" : "done"} icon="🚨" />
+            <StatCard label="Opportunities" value={intelStats.opportunityCount} variant="sched"  icon="💎" />
+            <StatCard label="Products"      value={`${productStats.imported}/${productStats.total}`} variant="done" icon="📦" />
+          </div>
+          {intelStats.lastScan && (
+            <div style={{ fontSize: 11, color: "var(--p-color-text-secondary)", marginTop: 8 }}>
+              Last scan: {new Date(intelStats.lastScan).toLocaleString()}
+            </div>
+          )}
+        </s-section>
+      )}
 
       {/* ── Recent drops ── */}
       <s-section heading="Recent Drops">

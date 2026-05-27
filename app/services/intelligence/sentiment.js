@@ -1,8 +1,11 @@
 /* eslint-disable no-undef */
+import { sanitizeSignal } from './pii-strip.js';
+import { computeTrendCAGR, cagrToSentiment } from './trend-cagr.js';
+
 const REDDIT_UA = 'Predator-SentimentEngine/2.0 (product-research)';
 
 function createSignal(source, data) {
-  return {
+  const signal = {
     id:        `${source}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     source,
     keyword:   data.keyword || '',
@@ -16,6 +19,11 @@ function createSignal(source, data) {
     ts:        data.ts || Date.now(),
     raw:       data.raw || null,
   };
+
+  // Strip PII from all text fields + tracking params from URLs
+  sanitizeSignal(signal);
+
+  return signal;
 }
 
 async function scanReddit(subreddits, keywords, opts = {}) {
@@ -116,43 +124,33 @@ async function scanGoogleTrends(keywords) {
       const data = await res.json();
 
       const timeline = data.interest_over_time?.timeline_data || [];
-      const recent = timeline.slice(-4);
-      const values = recent.map(t => t.values?.[0]?.extracted_value || 0);
-      const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+      const allValues = timeline.map(t => t.values?.[0]?.extracted_value || 0);
+      const recent = allValues.slice(-4);
+      const avg = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : 0;
 
-      let velocity = 0;
-      if (values.length >= 2) {
-        velocity = values[values.length - 1] - values[0];
-      }
+      // CAGR-based trend analysis (replaces simple linear velocity)
+      const trendMetrics = computeTrendCAGR(allValues.length >= 4 ? allValues : recent);
 
       const risingQueries = (data.related_queries?.rising || []).map(q => q.query);
 
       signals.push(createSignal('google-trends', {
         keyword:   kw,
-        title:     `Google Trends: "${kw}" — interest ${Math.round(avg)}/100`,
+        title:     `Google Trends: "${kw}" — interest ${Math.round(avg)}/100 (${trendMetrics.trendDirection})`,
         body:      risingQueries.length ? `Rising queries: ${risingQueries.slice(0, 5).join(', ')}` : '',
         score:     Math.round(avg),
-        sentiment: velocity > 10 ? 0.6 : velocity > 0 ? 0.3 : velocity < -10 ? -0.4 : 0,
+        sentiment: cagrToSentiment(trendMetrics),
         url:       `https://trends.google.com/trends/explore?q=${encodeURIComponent(kw)}`,
-        raw:       { values, velocity, risingQueries },
+        raw:       { values: allValues, ...trendMetrics, risingQueries },
       }));
     } catch { /* non-fatal */ }
   }
   return signals;
 }
 
-/**
- * TikTok hashtag scanner — requires TikTok Research API credentials.
- * TikTok does not offer a public search API; this returns no signals until
- * TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET are configured and a real
- * integration is wired here.
- */
+// TikTok scanning is now handled by ./scanners/tiktok.js (dynamic import in fullSentimentScan)
+// Legacy stub kept for backward compatibility of exports
 // eslint-disable-next-line no-unused-vars
-async function scanTikTokHashtags(keywords) {
-  // No public TikTok API available — return empty to avoid polluting signals
-  // with placeholder data that has no real engagement numbers.
-  return [];
-}
+async function scanTikTokHashtags(keywords) { return []; }
 
 async function aiAnalyzeSentiment(signals) {
   if (!process.env.ANTHROPIC_API_KEY || !signals.length) return signals;
@@ -242,7 +240,7 @@ function computeHypeScore(signal) {
 
   hype += Math.round((signal.sentiment + 1) / 2 * 25);
 
-  const sourceWeights = { 'reddit': 12, 'hackernews': 10, 'google-trends': 15, 'tiktok': 14, 'producthunt': 8 };
+  const sourceWeights = { 'reddit': 12, 'hackernews': 10, 'google-trends': 15, 'tiktok': 14, 'instagram': 13, 'producthunt': 8 };
   hype += sourceWeights[signal.source] || 5;
 
   const ageHours = (Date.now() - signal.ts) / 3600000;
@@ -265,7 +263,8 @@ export async function fullSentimentScan(config, onProgress) {
   const {
     subreddits = [], keywords = [],
     enableReddit = true, enableHN = true, enableTrends = true,
-    enableTikTok = true, enableAiAnalysis = true,
+    enableTikTok = true, enableInstagram = false, enableAiAnalysis = true,
+    instagramHashtags = [],
   } = config;
 
   const allSignals = [];
@@ -282,7 +281,20 @@ export async function fullSentimentScan(config, onProgress) {
     scanners.push(scanGoogleTrends(keywords).then(s => { progress('google-trends', s.length); return s; }).catch(() => []));
   }
   if (enableTikTok && keywords.length) {
-    scanners.push(scanTikTokHashtags(keywords).then(s => { progress('tiktok', s.length); return s; }).catch(() => []));
+    scanners.push(
+      import('./scanners/tiktok.js')
+        .then(mod => mod.search(keywords, { createSignal, quickSentiment }))
+        .then(s => { progress('tiktok', s.length); return s; })
+        .catch(() => [])
+    );
+  }
+  if (enableInstagram && (instagramHashtags.length || keywords.length)) {
+    scanners.push(
+      import('./scanners/instagram.js')
+        .then(mod => mod.search(instagramHashtags.length ? instagramHashtags : keywords, { createSignal, quickSentiment }))
+        .then(s => { progress('instagram', s.length); return s; })
+        .catch(() => [])
+    );
   }
 
   const results = await Promise.all(scanners);
