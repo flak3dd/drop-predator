@@ -39,6 +39,7 @@ export default function App() {
           <s-link href="/app/engine">Engine</s-link>
           <s-link href="/app/intelligence">Intelligence</s-link>
           <s-link href="/app/pilot">AI Pilot</s-link>
+          <s-link href="/app/pipeline">Profit Pipeline</s-link>
           <s-link href="/app/settings">Settings</s-link>
         </s-app-nav>
       )}
@@ -55,6 +56,7 @@ const NAV_LINKS = [
   { href: "/app/engine",       label: "Engine" },
   { href: "/app/intelligence", label: "Intelligence" },
   { href: "/app/pilot",        label: "AI Pilot" },
+  { href: "/app/pipeline",    label: "Profit Pipeline" },
   { href: "/app/settings", label: "Settings" },
 ];
 
