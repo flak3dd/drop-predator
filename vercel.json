@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/drops-tick",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/intelligence",
+      "schedule": "0 6 * * *"
     }
   ]
 }

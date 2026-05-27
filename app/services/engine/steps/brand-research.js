@@ -1,5 +1,5 @@
 import { registerStep } from './index.js';
-import { enrichWithBrandResearch } from '../brand-research.js';
+import { enrichWithBrandResearch } from '../../intelligence/brand-research.js';
 import prisma from '../../../db.server.js';
 
 registerStep('brand_research', {

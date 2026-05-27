@@ -4,7 +4,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { StatCard, ConfigSlider, ConfigToggle, DetailTable, LifecycleBadge, LogTag } from "../components/engine-ui";
+import { StatCard, ConfigSlider, ConfigToggle, DetailTable, LifecycleBadge, ProcessLog } from "../components/engine-ui";
 import { MonitoringDashboard } from "../components/engine/MonitoringDashboard";
 import { SchedulingConfig } from "../components/engine/SchedulingConfig";
 import { AlertsConfig } from "../components/engine/AlertsConfig";
@@ -92,6 +92,8 @@ export default function EnginePage() {
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({ products: 0, avgMargin: 0, deals: 0, projRevenue: 0, sessionRev: 0 });
   const [logLines, setLogLines] = useState([]);
+  const [stepHistory, setStepHistory] = useState([]);
+  const [currentStep, setCurrentStep] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [config, setConfig] = useState(() => ({ ...DEFAULT_CONFIG, ...savedCore }));
   const [activeTab, setActiveTab] = useState("control");
@@ -117,6 +119,8 @@ export default function EnginePage() {
       if (data.products?.length) setProducts(data.products);
       if (data.stats) setStats(data.stats);
       if (data.log?.length) setLogLines(data.log);
+      if (data.stepHistory) setStepHistory(data.stepHistory);
+      if (data.currentStep) setCurrentStep(data.currentStep);
     } catch { /* silent poll failures */ }
   }, []);
 
@@ -455,24 +459,12 @@ export default function EnginePage() {
               </s-card>
 
               {/* Log */}
-              <s-card>
-                <s-box padding="400">
-                  <s-text variant="headingSm">Automation Log</s-text>
-                  <div style={{ maxHeight: 180, overflowY: "auto", marginTop: 8, fontFamily: "monospace", fontSize: 11, lineHeight: 1.8 }}>
-                    {logLines.length === 0 ? (
-                      <div style={{ color: "var(--p-color-text-secondary)" }}>Engine ready. Press Run Engine to begin.</div>
-                    ) : (
-                      logLines.map((l, i) => (
-                        <div key={i} style={{ borderBottom: "1px solid var(--p-color-border-subdued)", padding: "2px 0" }}>
-                          <span style={{ color: "var(--p-color-text-secondary)", marginRight: 8 }}>{new Date(l.ts).toLocaleTimeString()}</span>
-                          <LogTag tag={l.tag} cls={l.cls} />
-                          {l.msg}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </s-box>
-              </s-card>
+              <ProcessLog
+                logLines={logLines}
+                running={running}
+                stepHistory={stepHistory}
+                currentStep={currentStep}
+              />
             </div>
 
             {/* Right: Detail + Pricing + Actions + Config */}

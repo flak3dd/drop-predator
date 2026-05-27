@@ -9,7 +9,7 @@
  */
 
 import { SupplierBase } from './interface.js';
-import { breakers }     from '../circuit-breaker.js';
+import { breakers }     from '../risk/circuit-breaker.js';
 import cache            from '../engine/catalog-cache.js';
 
 const API_TTL = 4 * 60 * 60 * 1000; // factory prices change slowly
@@ -38,10 +38,11 @@ export class Alibaba1688Supplier extends SupplierBase {
 
   async search(keywords, opts = {}) {
     if (!this.isConfigured) {
-      (opts.log || (() => {}))('1688/Alibaba unavailable (SERPAPI_KEY not set)');
+      (opts.log || (() => {}))('[1688/Alibaba] Skipped — SERPAPI_KEY not set');
       return [];
     }
     const { log = () => {} } = opts;
+    log('[1688/Alibaba] Searching with configured SERPAPI key');
     const allProducts = [];
 
     for (const kw of keywords.slice(0, 3)) {
@@ -90,7 +91,10 @@ export class Alibaba1688Supplier extends SupplierBase {
         log(`1688/Alibaba "${kw}": ${items.length} factory listings`);
         await new Promise(r => setTimeout(r, 600));
       } catch (err) {
-        log(`1688/Alibaba "${kw}" failed: ${err.message}`);
+        const hint = err.message?.includes('401') || err.message?.includes('403')
+          ? ' — SERPAPI_KEY may be invalid or expired'
+          : '';
+        log(`[1688/Alibaba] "${kw}" failed: ${err.message}${hint}`);
       }
     }
 

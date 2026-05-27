@@ -1,5 +1,5 @@
 import { registerStep } from './index.js';
-import { importListings } from '../importer.js';
+import { importListings } from '../../shopify/importer.js';
 import prisma from '../../../db.server.js';
 
 registerStep('import', {

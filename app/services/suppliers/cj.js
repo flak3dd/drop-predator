@@ -6,7 +6,7 @@
  */
 
 import { SupplierBase } from './interface.js';
-import { breakers }    from '../circuit-breaker.js';
+import { breakers }    from '../risk/circuit-breaker.js';
 import cache           from '../engine/catalog-cache.js';
 
 const API_TTL = 30 * 60 * 1000;
@@ -65,8 +65,19 @@ export class CJSupplier extends SupplierBase {
   }
 
   async search(keywords, opts = {}) {
-    if (!this.isConfigured) return [];
+    if (!this.isConfigured) {
+      (opts.log || (() => {}))('[CJ] Skipped — CJ_EMAIL or CJ_PASSWORD not set');
+      return [];
+    }
     const { log = () => {}, pageSize = 20 } = opts;
+    // Pre-flight: try to authenticate so we surface auth errors early
+    try {
+      await getToken();
+      log('[CJ] Authenticated successfully');
+    } catch (authErr) {
+      log(`[CJ] ⚠️  Authentication failed: ${authErr.message} — check CJ_EMAIL and CJ_PASSWORD are valid CJ API credentials`);
+      return [];
+    }
     const allProducts = [];
 
     for (const kw of keywords.slice(0, 4)) {
@@ -115,7 +126,7 @@ export class CJSupplier extends SupplierBase {
         log(`CJ "${kw}": ${mapped.length} products`);
         await new Promise(r => setTimeout(r, 1100)); // CJ rate limit
       } catch (err) {
-        log(`CJ "${kw}" failed: ${err.message}`);
+        log(`[CJ] "${kw}" failed: ${err.message}`);
       }
     }
 

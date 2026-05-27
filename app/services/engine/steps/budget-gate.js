@@ -1,7 +1,7 @@
 import { registerStep } from './index.js';
 import { checkBudget, flushCost, logCostSummary } from '../../ai/cost-tracker.js';
 import { emit, Events } from '../../core/event-bus.js';
-import { autoStopEngine } from '../risk-guard.js';
+import { autoStopEngine } from '../../risk/risk-guard.js';
 
 registerStep('budget_gate', {
   async execute(ctx) {

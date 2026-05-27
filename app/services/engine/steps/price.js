@@ -1,6 +1,6 @@
 import { registerStep } from './index.js';
-import { computePricingWithCompetitors } from '../price.js';
-import { getCompetitorIntel } from '../competitor-price.js';
+import { computePricingWithCompetitors } from '../../shopify/pricing.js';
+import { getCompetitorIntel } from '../../shopify/competitor-price.js';
 import prisma from '../../../db.server.js';
 
 registerStep('price', {

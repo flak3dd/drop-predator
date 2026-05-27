@@ -77,14 +77,39 @@ export class SupplierRouter {
    * @returns {Promise<import('./interface.js').RawProduct[]>}
    */
   async search(keywords, opts = {}) {
+    const log = opts.log || (() => {});
+
+    // ── Diagnostic: show configuration + health status for every supplier ──
+    for (const s of this._suppliers) {
+      const configured = s.isConfigured;
+      const healthy    = this._isHealthy(s);
+      const errRate    = this._errorRate(s.name);
+      const calls      = this._health.get(s.name)?.total || 0;
+      const status     = !configured ? 'NOT CONFIGURED'
+                       : !healthy    ? `DEGRADED (${(errRate * 100).toFixed(0)}% errors over ${calls} calls)`
+                       :               'OK';
+      log(`[Supplier] ${s.name}: ${status}`);
+    }
+
     const targets = this.available;
     if (!targets.length) {
+      // Show which suppliers are configured but degraded vs unconfigured
+      const unconfigured = this._suppliers.filter(s => !s.isConfigured);
+      const degraded     = this._suppliers.filter(s => s.isConfigured && !this._isHealthy(s));
+
+      const parts = [];
+      if (degraded.length) {
+        parts.push(`Degraded: ${degraded.map(s => `${s.name} (${(this._errorRate(s.name) * 100).toFixed(0)}% error rate)`).join(', ')}`);
+      }
+      if (unconfigured.length) {
+        parts.push(`Not configured: ${unconfigured.map(s => s.name).join(', ')}`);
+      }
       throw new Error(
-        'No suppliers available. Configure CJ_EMAIL+CJ_PASSWORD, ALI_APP_KEY+ALI_APP_SECRET, or SERPAPI_KEY.',
+        `No healthy suppliers available. ${parts.join('. ')}. ` +
+        'Configure CJ_EMAIL+CJ_PASSWORD, ALI_APP_KEY+ALI_APP_SECRET, or SERPAPI_KEY.',
       );
     }
 
-    const log = opts.log || (() => {});
     log(`Sourcing from [${targets.map(s => s.name).join(', ')}] in parallel…`);
 
     const settled = await Promise.allSettled(

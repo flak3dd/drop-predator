@@ -14,7 +14,7 @@
  *   repriceByVelocity(product, intel)                  → adjusted price
  */
 
-import cache from './catalog-cache.js';
+import cache from '../engine/catalog-cache.js';
 
 const PRICE_CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours — prices don't move that fast
 
