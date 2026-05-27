@@ -1,5 +1,5 @@
 import { registerStep } from './index.js';
-import { runRiskChecks, autoStopEngine } from '../risk-guard.js';
+import { runRiskChecks, autoStopEngine } from '../../risk/risk-guard.js';
 
 registerStep('risk_check', {
   async execute(ctx) {

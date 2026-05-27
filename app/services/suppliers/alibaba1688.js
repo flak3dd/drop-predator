@@ -9,7 +9,7 @@
  */
 
 import { SupplierBase } from './interface.js';
-import { breakers }     from '../circuit-breaker.js';
+import { breakers }     from '../risk/circuit-breaker.js';
 import cache            from '../engine/catalog-cache.js';
 
 const API_TTL = 4 * 60 * 60 * 1000; // factory prices change slowly

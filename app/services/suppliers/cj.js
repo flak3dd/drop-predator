@@ -6,7 +6,7 @@
  */
 
 import { SupplierBase } from './interface.js';
-import { breakers }    from '../circuit-breaker.js';
+import { breakers }    from '../risk/circuit-breaker.js';
 import cache           from '../engine/catalog-cache.js';
 
 const API_TTL = 30 * 60 * 1000;

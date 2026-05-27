@@ -16,8 +16,8 @@
 
 import { authenticate } from '../shopify.server';
 import prisma from '../db.server.js';
-import { createDsOrder } from '../services/engine/aliexpress-ds.js';
-import { getShopCredential } from '../services/engine/ali-credentials.js';
+import { createDsOrder } from '../services/shopify/aliexpress-ds.js';
+import { getShopCredential } from '../services/shopify/ali-credentials.js';
 
 export const action = async ({ request }) => {
   const { shop, payload } = await authenticate.webhook(request);

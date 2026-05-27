@@ -11,7 +11,7 @@
  */
 
 import { negotiateSupplier } from './negotiate.js';
-import { getActivePrice } from './price.js';
+import { getActivePrice } from '../shopify/pricing.js';
 import { getNicheConfig } from '../../data/products.js';
 import { emit, Events, registerDefaultListeners } from '../core/event-bus.js';
 import { startRun } from './orchestrator.js';

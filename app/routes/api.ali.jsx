@@ -27,9 +27,9 @@ import {
   getDsTracking,
   getOAuthUrl,
   exchangeOAuthCode,
-} from '../services/engine/aliexpress-ds.js';
-import { getShopCredential } from '../services/engine/ali-credentials.js';
-import { checkOrderCaps } from '../services/engine/risk-guard.js';
+} from '../services/shopify/aliexpress-ds.js';
+import { getShopCredential } from '../services/shopify/ali-credentials.js';
+import { checkOrderCaps } from '../services/risk/risk-guard.js';
 
 // ─── Loader (GET) ────────────────────────────────────────────────────────────
 

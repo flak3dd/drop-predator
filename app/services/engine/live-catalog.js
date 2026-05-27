@@ -1,7 +1,7 @@
 import { supplierRouter } from '../suppliers/index.js';
 import cache from './catalog-cache.js';
-import { fullSentimentScan } from './sentiment.js';
-import { runDiscovery } from './discovery.js';
+import { fullSentimentScan } from '../intelligence/sentiment.js';
+import { runDiscovery } from '../intelligence/discovery.js';
 import { getNicheConfig } from '../../data/products.js';
 
 const SCRAPE_TTL = 60 * 60 * 1000;

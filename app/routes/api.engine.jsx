@@ -7,7 +7,7 @@ import {
   negotiateProduct,
   setPriceMode,
 } from "../services/engine/pipeline.js";
-import { importListings } from "../services/engine/importer.js";
+import { importListings } from "../services/shopify/importer.js";
 import prisma from "../db.server.js";
 
 export async function loader({ request }) {

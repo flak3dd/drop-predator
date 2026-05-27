@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-import { getActivePrice } from './price.js';
+import { getActivePrice } from './pricing.js';
 import { generateListing } from './listing-generator.js';
 import prisma from '../../db.server.js';
 
