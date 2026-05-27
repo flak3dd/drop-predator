@@ -23,7 +23,12 @@ export const loader = async ({ request }) => {
 
 const SOURCE_ICONS = {
   reddit: "🔴", hackernews: "🟠", "google-trends": "📈",
-  tiktok: "🎵", ai: "🧠", producthunt: "🚀",
+  tiktok: "🎵", instagram: "📸", ai: "🧠", producthunt: "🚀",
+};
+
+const SOURCE_COLORS = {
+  reddit: "#FF4500", hackernews: "#FF6600", "google-trends": "#4285F4",
+  tiktok: "#9B59B6", instagram: "#E1306C", producthunt: "#DA552F",
 };
 
 const SEVERITY_COLORS = {
@@ -166,6 +171,140 @@ function StatBox({ label, value, icon, color }) {
   );
 }
 
+function SourceBreakdownChart({ signals }) {
+  if (!signals || signals.length === 0) return null;
+
+  const counts = {};
+  for (const s of signals) {
+    counts[s.source] = (counts[s.source] || 0) + 1;
+  }
+  const total = signals.length;
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+  return (
+    <s-card>
+      <s-box padding="400">
+        <s-text variant="headingSm">Source Breakdown</s-text>
+        <div style={{ marginTop: 10 }}>
+          {/* Stacked bar */}
+          <div style={{ display: "flex", height: 24, borderRadius: 6, overflow: "hidden", marginBottom: 10 }}>
+            {sorted.map(([source, count]) => (
+              <div
+                key={source}
+                style={{
+                  width: `${(count / total) * 100}%`,
+                  background: SOURCE_COLORS[source] || "#999",
+                  minWidth: 3,
+                }}
+                title={`${source}: ${count} (${Math.round((count / total) * 100)}%)`}
+              />
+            ))}
+          </div>
+          {/* Legend */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11 }}>
+            {sorted.map(([source, count]) => (
+              <div key={source} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: SOURCE_COLORS[source] || "#999",
+                  display: "inline-block",
+                }} />
+                <span style={{ fontWeight: 600 }}>{source}</span>
+                <span style={{ color: "var(--p-color-text-secondary)" }}>{count} ({Math.round((count / total) * 100)}%)</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </s-box>
+    </s-card>
+  );
+}
+
+function TrendVelocityGraph({ history }) {
+  if (!history || history.length < 2) return null;
+
+  const data = history.slice(0, 12).reverse();
+  const maxVal = Math.max(...data.map(h => h.signals), 1);
+  const width = 260;
+  const height = 60;
+  const padding = 4;
+
+  const points = data.map((h, i) => {
+    const x = padding + (i / (data.length - 1)) * (width - padding * 2);
+    const y = height - padding - ((h.signals / maxVal) * (height - padding * 2));
+    return `${x},${y}`;
+  }).join(" ");
+
+  const areaPoints = `${padding},${height - padding} ${points} ${width - padding},${height - padding}`;
+
+  return (
+    <s-card>
+      <s-box padding="400">
+        <s-text variant="headingSm">Signal Trend</s-text>
+        <div style={{ marginTop: 8 }}>
+          <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto" }}>
+            <polygon points={areaPoints} fill="rgba(41,121,255,0.1)" />
+            <polyline points={points} fill="none" stroke="#2979FF" strokeWidth="2" strokeLinejoin="round" />
+            {data.map((h, i) => {
+              const x = padding + (i / (data.length - 1)) * (width - padding * 2);
+              const y = height - padding - ((h.signals / maxVal) * (height - padding * 2));
+              return <circle key={i} cx={x} cy={y} r="2.5" fill="#2979FF" />;
+            })}
+          </svg>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--p-color-text-secondary)", marginTop: 2 }}>
+            <span>{data[0]?.signals || 0} signals</span>
+            <span>{data[data.length - 1]?.signals || 0} signals</span>
+          </div>
+        </div>
+      </s-box>
+    </s-card>
+  );
+}
+
+function IntentDistribution({ signals }) {
+  if (!signals || signals.length === 0) return null;
+
+  const hasIntent = signals.filter(s => s.intentScore > 0);
+  if (hasIntent.length === 0) return null;
+
+  const high = hasIntent.filter(s => s.intentScore >= 65).length;
+  const medium = hasIntent.filter(s => s.intentScore >= 35 && s.intentScore < 65).length;
+  const low = hasIntent.filter(s => s.intentScore > 0 && s.intentScore < 35).length;
+  const none = signals.length - hasIntent.length;
+  const total = signals.length;
+
+  const buckets = [
+    { label: "High", count: high, color: "#00C853" },
+    { label: "Medium", count: medium, color: "#FFB300" },
+    { label: "Low", count: low, color: "#FF5252" },
+    { label: "None", count: none, color: "#E0E0E0" },
+  ].filter(b => b.count > 0);
+
+  return (
+    <s-card>
+      <s-box padding="400">
+        <s-text variant="headingSm">Purchase Intent</s-text>
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: "flex", height: 20, borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
+            {buckets.map(b => (
+              <div key={b.label} style={{ width: `${(b.count / total) * 100}%`, background: b.color, minWidth: 2 }}
+                title={`${b.label}: ${b.count}`} />
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 12, fontSize: 10 }}>
+            {buckets.map(b => (
+              <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: b.color, display: "inline-block" }} />
+                <span>{b.label}: {b.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </s-box>
+    </s-card>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function IntelligencePage() {
@@ -285,6 +424,13 @@ export default function IntelligencePage() {
                 </div>
               </s-box>
             </s-card>
+          </div>
+
+          {/* New visualizations */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginTop: 16 }}>
+            <SourceBreakdownChart signals={signals} />
+            <TrendVelocityGraph history={history} />
+            <IntentDistribution signals={signals} />
           </div>
 
           {/* Cross-platform trends */}

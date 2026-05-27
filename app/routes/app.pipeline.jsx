@@ -21,12 +21,17 @@ export const loader = async ({ request }) => {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const NICHES = [
-  { id: "gym",     label: "Gym & Fitness",    icon: "💪", keywords: "resistance bands, yoga mats, dumbbells" },
-  { id: "tech",    label: "Tech & Gadgets",   icon: "📱", keywords: "phone accessories, smart home, USB-C" },
-  { id: "beauty",  label: "Beauty & Skincare", icon: "💄", keywords: "serums, LED masks, jade rollers" },
-  { id: "home",    label: "Home & Kitchen",   icon: "🏠", keywords: "organizers, cookware, smart lighting" },
-  { id: "outdoor", label: "Outdoor & Camping", icon: "⛺", keywords: "hammocks, solar chargers, survival gear" },
-  { id: "pets",    label: "Pet Products",     icon: "🐕", keywords: "interactive toys, grooming, GPS trackers" },
+  { id: "gym",        label: "Gym & Fitness",       icon: "💪", keywords: "resistance bands, yoga mats, dumbbells" },
+  { id: "tech",       label: "Tech & Gadgets",      icon: "📱", keywords: "phone accessories, smart home, USB-C" },
+  { id: "beauty",     label: "Beauty & Skincare",   icon: "💄", keywords: "serums, LED masks, jade rollers" },
+  { id: "home",       label: "Home & Kitchen",      icon: "🏠", keywords: "organizers, cookware, smart lighting" },
+  { id: "outdoor",    label: "Outdoor & Camping",   icon: "⛺", keywords: "hammocks, solar chargers, survival gear" },
+  { id: "pet",        label: "Pet Products",        icon: "🐕", keywords: "interactive toys, grooming, GPS trackers" },
+  { id: "anxiety",    label: "Wellness",            icon: "🧘", keywords: "weighted blankets, aromatherapy, stress relief" },
+  { id: "fashion",    label: "Fashion & Accessories", icon: "👗", keywords: "streetwear, jewelry, sunglasses" },
+  { id: "gaming",     label: "Gaming & Esports",    icon: "🎮", keywords: "mechanical keyboards, RGB, gaming desks" },
+  { id: "baby",       label: "Baby & Kids",         icon: "👶", keywords: "baby safety, nursery, kids toys" },
+  { id: "automotive", label: "Automotive",          icon: "🚗", keywords: "car accessories, detailing, car gadgets" },
 ];
 
 const PHASES = [
@@ -67,6 +72,14 @@ export default function PipelinePage() {
   const [autoMedia, setAutoMedia] = useState(true);
   const [maxProducts, setMaxProducts] = useState(15);
   const [showConfig, setShowConfig] = useState(false);
+
+  // Data source toggles
+  const [enableReddit, setEnableReddit] = useState(true);
+  const [enableHN, setEnableHN] = useState(true);
+  const [enableTrends, setEnableTrends] = useState(true);
+  const [enableTikTok, setEnableTikTok] = useState(false);
+  const [enableInstagram, setEnableInstagram] = useState(false);
+  const [intentThreshold, setIntentThreshold] = useState(0);
 
   const logRef = useRef(null);
   const abortRef = useRef(null);
@@ -117,6 +130,12 @@ export default function PipelinePage() {
             autoImport,
             autoMedia,
             maxProducts,
+            enableReddit,
+            enableHN,
+            enableTrends,
+            enableTikTok,
+            enableInstagram,
+            intentThreshold,
           },
         }),
         signal: controller.signal,
@@ -290,6 +309,18 @@ export default function PipelinePage() {
                   <ConfigSlider label="Min Score" value={scoreThreshold} min={30} max={90} step={5} onChange={setScoreThreshold} />
                   <ConfigSlider label="Min Margin" value={marginFloor} min={15} max={60} step={5} suffix="%" onChange={setMarginFloor} />
                   <ConfigSlider label="Max Products" value={maxProducts} min={5} max={30} step={5} onChange={setMaxProducts} />
+                  <ConfigSlider label="Intent Threshold" value={intentThreshold} min={0} max={60} step={5} onChange={setIntentThreshold} />
+
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--p-color-text-secondary)", marginBottom: 6 }}>Data Sources</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <ToggleChip label="Reddit" active={enableReddit} onClick={() => setEnableReddit(!enableReddit)} />
+                      <ToggleChip label="HN" active={enableHN} onClick={() => setEnableHN(!enableHN)} />
+                      <ToggleChip label="Trends" active={enableTrends} onClick={() => setEnableTrends(!enableTrends)} />
+                      <ToggleChip label="TikTok" active={enableTikTok} onClick={() => setEnableTikTok(!enableTikTok)} />
+                      <ToggleChip label="Instagram" active={enableInstagram} onClick={() => setEnableInstagram(!enableInstagram)} />
+                    </div>
+                  </div>
 
                   <div style={{ display: "flex", gap: 8 }}>
                     <ToggleChip label="Auto-Import" active={autoImport} onClick={() => setAutoImport(!autoImport)} />
@@ -421,6 +452,7 @@ export default function PipelinePage() {
                         <th style={{ padding: "6px 8px", fontWeight: 600, textAlign: "right" }}>Margin</th>
                         <th style={{ padding: "6px 8px", fontWeight: 600, textAlign: "right" }}>Price</th>
                         <th style={{ padding: "6px 8px", fontWeight: 600, textAlign: "center" }}>Pricing</th>
+                        <th style={{ padding: "6px 8px", fontWeight: 600, textAlign: "right" }}>Intent</th>
                         <th style={{ padding: "6px 8px", fontWeight: 600, textAlign: "right" }}>Velocity</th>
                         <th style={{ padding: "6px 8px", fontWeight: 600, textAlign: "center" }}>Lifecycle</th>
                         <th style={{ padding: "6px 8px", fontWeight: 600, textAlign: "center" }}>Status</th>
@@ -452,6 +484,18 @@ export default function PipelinePage() {
                             }}>
                               {p.pricingMode}
                             </span>
+                          </td>
+                          <td style={{ padding: "8px", textAlign: "right" }}>
+                            {p.intentScore > 0 ? (
+                              <span style={{
+                                fontWeight: 600,
+                                color: p.intentScore >= 65 ? "#00C853" : p.intentScore >= 35 ? "#FFB300" : "var(--p-color-text-secondary)",
+                              }}>
+                                {p.intentScore}
+                              </span>
+                            ) : (
+                              <span style={{ color: "var(--p-color-text-secondary)" }}>—</span>
+                            )}
                           </td>
                           <td style={{ padding: "8px", textAlign: "right" }}>{p.velocity}/mo</td>
                           <td style={{ padding: "8px", textAlign: "center" }}>

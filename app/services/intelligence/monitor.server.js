@@ -81,9 +81,14 @@ export class MarketMonitor {
         enableReddit: true,
         enableHN: true,
         enableTrends: true,
-        enableTikTok: false,
+        enableTikTok:    config.enableTikTok || false,
+        enableInstagram: config.enableInstagram || false,
+        instagramHashtags: nicheConf.instagramHashtags || [],
         enableAiAnalysis: !!process.env.ANTHROPIC_API_KEY,
       });
+
+      // Store niche for persistence
+      result.niche = niche;
 
       result.signals = signals;
       result.stats.signalCount = signals.length;
@@ -193,55 +198,71 @@ export class MarketMonitor {
   }
 
   /**
-   * Persist intelligence insights to the Setting model's engineConfig.
-   * Stores the latest scan result for the Intelligence Dashboard.
+   * Persist intelligence insights to the IntelligenceScan + IntelligenceSignal tables.
+   * Creates a scan record and batch-inserts top signals.
    */
   async persistInsights(shop, result) {
     try {
-      const settings = await prisma.setting.findUnique({ where: { shop } });
-      const config = safeParseJson(settings?.engineConfig);
+      const niche = result.niche || 'gym';
 
-      // Store the latest intelligence report (keep it compact)
-      config.latestIntelligence = {
-        ts: result.ts,
-        signalCount: result.stats.signalCount,
-        alertCount: result.stats.alertCount,
-        opportunityCount: result.stats.opportunityCount,
-        topSignals: result.signals
-          .sort((a, b) => b.hypeScore - a.hypeScore)
-          .slice(0, 20)
-          .map(s => ({
-            id: s.id,
-            source: s.source,
-            keyword: s.keyword,
-            title: s.title.slice(0, 120),
-            hypeScore: s.hypeScore,
-            sentiment: s.sentiment,
-            url: s.url,
-            ts: s.ts,
+      // Create the scan record
+      const scan = await prisma.intelligenceScan.create({
+        data: {
+          shop,
+          niche,
+          trigger:          result.trigger || 'cron',
+          status:           result.stats.alertCount >= 0 ? 'COMPLETED' : 'FAILED',
+          signalCount:      result.stats.signalCount,
+          alertCount:       result.stats.alertCount,
+          opportunityCount: result.stats.opportunityCount,
+          durationMs:       result.stats.durationMs,
+          alerts:           JSON.stringify(result.alerts.slice(0, 20)),
+          opportunities:    JSON.stringify(result.opportunities.slice(0, 10)),
+          crossPlatform:    JSON.stringify(result.crossPlatform.slice(0, 10)),
+          gaps:             JSON.stringify(result.gaps.slice(0, 10)),
+          completedAt:      new Date(),
+        },
+      });
+
+      // Batch insert top 50 signals
+      const topSignals = result.signals
+        .sort((a, b) => b.hypeScore - a.hypeScore)
+        .slice(0, 50);
+
+      if (topSignals.length > 0) {
+        await prisma.intelligenceSignal.createMany({
+          data: topSignals.map(s => ({
+            shop,
+            scanId:     scan.id,
+            source:     s.source,
+            keyword:    s.keyword || '',
+            title:      (s.title || '').slice(0, 500),
+            body:       (s.body || '').slice(0, 1000),
+            url:        (s.url || '').slice(0, 500),
+            hypeScore:  s.hypeScore || 0,
+            sentiment:  s.sentiment || 0,
+            engagement: (s.score || 0) + (s.comments || 0) * 2,
+            intentScore: s.intentScore || 0,
+            aiAnalyzed: !!s._aiAnalyzed,
+            raw:        JSON.stringify(s.raw || {}),
+            signalTs:   new Date(s.ts || Date.now()),
           })),
-        alerts: result.alerts.slice(0, 20),
-        opportunities: result.opportunities.slice(0, 10),
-        crossPlatform: result.crossPlatform.slice(0, 10),
-        gaps: result.gaps.slice(0, 10),
-      };
+        });
+      }
 
-      // Maintain a rolling history (last 24 entries)
-      if (!config.intelligenceHistory) config.intelligenceHistory = [];
-      config.intelligenceHistory.unshift({
-        ts: result.ts,
-        signals: result.stats.signalCount,
-        alerts: result.stats.alertCount,
-        opportunities: result.stats.opportunityCount,
-        duration: result.stats.durationMs,
-      });
-      config.intelligenceHistory = config.intelligenceHistory.slice(0, 24);
-
-      await prisma.setting.upsert({
+      // Auto-prune: keep only the latest 100 scans per shop
+      const oldScans = await prisma.intelligenceScan.findMany({
         where: { shop },
-        update: { engineConfig: JSON.stringify(config) },
-        create: { shop, engineConfig: JSON.stringify(config) },
+        orderBy: { createdAt: 'desc' },
+        skip: 100,
+        select: { id: true },
       });
+
+      if (oldScans.length > 0) {
+        await prisma.intelligenceScan.deleteMany({
+          where: { id: { in: oldScans.map(s => s.id) } },
+        });
+      }
     } catch (err) {
       console.error('[intelligence] Failed to persist insights:', err.message);
     }
@@ -249,14 +270,85 @@ export class MarketMonitor {
 
   /**
    * Get the latest intelligence data for a shop (from DB).
+   * Queries IntelligenceScan + IntelligenceSignal tables.
    * Used by the Intelligence Dashboard API.
    */
   async getLatest(shop) {
+    // Get shop config for niche/keywords settings
     const settings = await prisma.setting.findUnique({ where: { shop } });
     const config = safeParseJson(settings?.engineConfig);
+
+    // Latest scan with its signals
+    const latestScan = await prisma.intelligenceScan.findFirst({
+      where: { shop },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        signals: {
+          orderBy: { hypeScore: 'desc' },
+          take: 20,
+        },
+      },
+    });
+
+    // Scan history (last 24 scans)
+    const history = await prisma.intelligenceScan.findMany({
+      where: { shop },
+      orderBy: { createdAt: 'desc' },
+      take: 24,
+      select: {
+        id: true,
+        createdAt: true,
+        signalCount: true,
+        alertCount: true,
+        opportunityCount: true,
+        durationMs: true,
+        niche: true,
+        trigger: true,
+        status: true,
+      },
+    });
+
+    // Format the latest scan into the shape the UI expects
+    let latest = null;
+    if (latestScan) {
+      latest = {
+        ts: latestScan.createdAt.toISOString(),
+        signalCount: latestScan.signalCount,
+        alertCount: latestScan.alertCount,
+        opportunityCount: latestScan.opportunityCount,
+        topSignals: latestScan.signals.map(s => ({
+          id: s.id,
+          source: s.source,
+          keyword: s.keyword,
+          title: s.title,
+          body: s.body,
+          hypeScore: s.hypeScore,
+          sentiment: s.sentiment,
+          engagement: s.engagement,
+          intentScore: s.intentScore,
+          url: s.url,
+          ts: s.signalTs.getTime(),
+          aiAnalyzed: s.aiAnalyzed,
+        })),
+        alerts: safeParseJson(latestScan.alerts) || [],
+        opportunities: safeParseJson(latestScan.opportunities) || [],
+        crossPlatform: safeParseJson(latestScan.crossPlatform) || [],
+        gaps: safeParseJson(latestScan.gaps) || [],
+      };
+    }
+
     return {
-      latest: config.latestIntelligence || null,
-      history: config.intelligenceHistory || [],
+      latest,
+      history: history.map(h => ({
+        ts: h.createdAt.toISOString(),
+        signals: h.signalCount,
+        alerts: h.alertCount,
+        opportunities: h.opportunityCount,
+        duration: h.durationMs,
+        niche: h.niche,
+        trigger: h.trigger,
+        status: h.status,
+      })),
       monitorKeywords: config.monitorKeywords || [],
       monitorSubreddits: config.monitorSubreddits || [],
       niche: config.niche || config.lastNiche || 'gym',

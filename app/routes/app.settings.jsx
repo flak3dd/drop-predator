@@ -25,7 +25,21 @@ export const loader = async ({ request }) => {
     configured: !!(process.env.ALI_APP_KEY && process.env.ALI_APP_SECRET),
   };
 
-  return { settings, engineConfig, aliStatus };
+  // Data source configs
+  const dataSources = await prisma.dataSourceConfig.findMany({
+    where: { shop: session.shop },
+  });
+  const dsMap = {};
+  for (const ds of dataSources) {
+    dsMap[ds.source] = {
+      enabled: ds.enabled,
+      hasKey: !!ds.apiKey,
+      lastPingOk: ds.lastPingOk,
+      errorCount: ds.errorCount,
+    };
+  }
+
+  return { settings, engineConfig, aliStatus, dataSources: dsMap };
 };
 
 export const action = async ({ request }) => {
@@ -52,6 +66,8 @@ export const action = async ({ request }) => {
       marginFloor: parseInt(formData.get("marginFloor") || existingEngine.marginFloor || "35"),
       moqMax: parseInt(formData.get("moqMax") || existingEngine.moqMax || "100"),
       autonomyLevel: parseInt(formData.get("autonomyLevel") || existingEngine.autonomyLevel || "3"),
+      intentThreshold: parseInt(formData.get("intentThreshold") || existingEngine.intentThreshold || "0"),
+      anonymizePii: formData.has("anonymizePii") ? formData.get("anonymizePii") === "on" : (existingEngine.anonymizePii !== false),
       negotiationEnabled: formData.get("negotiationEnabled") === "on",
       pricingEnabled: formData.get("pricingEnabled") === "on",
       importEnabled: formData.get("importEnabled") === "on",
@@ -59,6 +75,32 @@ export const action = async ({ request }) => {
       surgeEnabled: formData.get("surgeEnabled") === "on",
     };
     updateData.engineConfig = JSON.stringify(engineConfig);
+  }
+
+  if (section === "datasources") {
+    const sources = ['reddit', 'google-trends', 'tiktok', 'instagram', 'serpapi'];
+    for (const source of sources) {
+      const enabled = formData.get(`ds_${source}_enabled`) === "on";
+      const apiKey = formData.get(`ds_${source}_key`) || null;
+      const apiSecret = formData.get(`ds_${source}_secret`) || null;
+
+      await prisma.dataSourceConfig.upsert({
+        where: { shop_source: { shop: session.shop, source } },
+        update: {
+          enabled,
+          ...(apiKey !== null ? { apiKey } : {}),
+          ...(apiSecret !== null ? { apiSecret } : {}),
+        },
+        create: {
+          shop: session.shop,
+          source,
+          enabled,
+          apiKey,
+          apiSecret,
+        },
+      });
+    }
+    return { success: "Data sources saved" };
   }
 
   await prisma.setting.upsert({
@@ -71,7 +113,7 @@ export const action = async ({ request }) => {
 };
 
 export default function Settings() {
-  const { settings, engineConfig, aliStatus } = useLoaderData();
+  const { settings, engineConfig, aliStatus, dataSources } = useLoaderData();
   const fetcher = useFetcher();
   const aliFetcher = useFetcher();
   const shopify = useAppBridge();
@@ -232,6 +274,38 @@ export default function Settings() {
                       style={{ padding: "8px", width: "80px" }}
                     />
                   </s-stack>
+                  <s-stack direction="block" gap="tight">
+                    <label htmlFor="intentThreshold" style={{ fontWeight: 600 }}>
+                      Intent Threshold (0-100)
+                    </label>
+                    <input
+                      type="number"
+                      id="intentThreshold"
+                      name="intentThreshold"
+                      defaultValue={engineConfig.intentThreshold || 0}
+                      min="0"
+                      max="100"
+                      style={{ padding: "8px", width: "80px" }}
+                    />
+                    <s-text variant="subdued">Min purchase intent score. 0 = disabled.</s-text>
+                  </s-stack>
+                </s-stack>
+                <s-stack direction="inline" gap="base" style={{ marginTop: "8px" }}>
+                  <input
+                    type="checkbox"
+                    id="anonymizePii"
+                    name="anonymizePii"
+                    defaultChecked={engineConfig.anonymizePii !== false}
+                    style={{ width: 18, height: 18, flexShrink: 0, marginTop: 2 }}
+                  />
+                  <s-stack direction="block" gap="tight">
+                    <label htmlFor="anonymizePii" style={{ fontWeight: 600 }}>
+                      Anonymize PII in signals
+                    </label>
+                    <s-text>
+                      Strip usernames, email addresses, and phone numbers from intelligence signals.
+                    </s-text>
+                  </s-stack>
                 </s-stack>
               </s-stack>
             </s-box>
@@ -358,6 +432,79 @@ export default function Settings() {
               {...(isSubmitting ? { loading: true } : {})}
             >
               Save Settings
+            </s-button>
+          </s-stack>
+        </fetcher.Form>
+      </s-section>
+
+      {/* ── Data Sources & API Keys ──────────────────────────────────────── */}
+      <s-section heading="Data Sources & API Keys">
+        <fetcher.Form method="POST">
+          <input type="hidden" name="section" value="datasources" />
+          <s-stack direction="block" gap="base">
+            {[
+              { id: "reddit", label: "Reddit", desc: "No API key needed (public)", needsKey: false },
+              { id: "google-trends", label: "Google Trends", desc: "Uses SERPAPI_KEY", needsKey: false },
+              { id: "tiktok", label: "TikTok", desc: "EnsembleData or TikTok Research API", needsKey: true, hasSecret: true },
+              { id: "instagram", label: "Instagram", desc: "EnsembleData or Graph API", needsKey: true },
+              { id: "serpapi", label: "SerpAPI (Ads/Competitors)", desc: "For ad competition + competitor pricing", needsKey: true },
+            ].map((src) => (
+              <s-box key={src.id} padding="base" borderWidth="base" borderRadius="base">
+                <s-stack direction="block" gap="tight">
+                  <s-stack direction="inline" gap="base" align="center">
+                    <input
+                      type="checkbox"
+                      id={`ds_${src.id}_enabled`}
+                      name={`ds_${src.id}_enabled`}
+                      defaultChecked={dataSources[src.id]?.enabled !== false}
+                      style={{ width: 18, height: 18, flexShrink: 0 }}
+                    />
+                    <label htmlFor={`ds_${src.id}_enabled`} style={{ fontWeight: 600, flex: 1 }}>
+                      {src.label}
+                    </label>
+                    <span style={{
+                      width: 8, height: 8, borderRadius: "50%",
+                      backgroundColor: dataSources[src.id]?.lastPingOk !== false ? "#22c55e" : "#ef4444",
+                      display: "inline-block",
+                    }} />
+                  </s-stack>
+                  <s-text variant="subdued">{src.desc}</s-text>
+                  {src.needsKey && (
+                    <s-stack direction="inline" gap="base">
+                      <s-stack direction="block" gap="tight">
+                        <label htmlFor={`ds_${src.id}_key`} style={{ fontSize: 12 }}>API Key</label>
+                        <input
+                          type="password"
+                          id={`ds_${src.id}_key`}
+                          name={`ds_${src.id}_key`}
+                          placeholder={dataSources[src.id]?.hasKey ? "••••••••" : "Enter API key"}
+                          style={{ padding: "6px 8px", width: "220px", fontSize: 13 }}
+                        />
+                      </s-stack>
+                      {src.hasSecret && (
+                        <s-stack direction="block" gap="tight">
+                          <label htmlFor={`ds_${src.id}_secret`} style={{ fontSize: 12 }}>API Secret</label>
+                          <input
+                            type="password"
+                            id={`ds_${src.id}_secret`}
+                            name={`ds_${src.id}_secret`}
+                            placeholder="Enter secret"
+                            style={{ padding: "6px 8px", width: "220px", fontSize: 13 }}
+                          />
+                        </s-stack>
+                      )}
+                    </s-stack>
+                  )}
+                </s-stack>
+              </s-box>
+            ))}
+
+            <s-button
+              type="submit"
+              variant="primary"
+              {...(isSubmitting ? { loading: true } : {})}
+            >
+              Save Data Sources
             </s-button>
           </s-stack>
         </fetcher.Form>
