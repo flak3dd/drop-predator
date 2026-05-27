@@ -17,7 +17,7 @@
  */
 
 import prisma from '../db.server.js';
-import { getMonitor } from '../services/intelligence/index.js';
+import { getMonitor } from '../services/intelligence/monitor.server.js';
 
 export async function loader({ request }) {
   // Verify cron secret

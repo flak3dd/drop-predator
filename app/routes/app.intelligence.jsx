@@ -3,7 +3,6 @@ import { useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getMonitor } from "../services/intelligence/index.js";
 
 // ─── Server exports ───────────────────────────────────────────────────────────
 
@@ -11,6 +10,10 @@ export const headers = (headersArgs) => boundary.headers(headersArgs);
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
+  // Dynamic import — monitor.server.js imports db.server.js which is server-only.
+  // A static import at module level would pull it into the client bundle and
+  // break the React-Router / Vite build.
+  const { getMonitor } = await import("../services/intelligence/monitor.server.js");
   const monitor = getMonitor();
   const data = await monitor.getLatest(session.shop);
   return { data };
