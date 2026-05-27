@@ -10,16 +10,17 @@ export async function scoutProducts(niche, config, log) {
     products = await fetchLiveProducts(niche, config, log);
     log(`✅ Loaded ${products.length} products from live catalog`);
   } catch (err) {
-    log(`❌ Live catalog failed: ${err.message}`);
+    log(`❌ Live catalog unavailable: ${err.message}`);
 
     // ── Diagnostic: show which env vars are set vs missing ──────────────
     if (process.env.NODE_ENV !== 'production') {
       const envCheck = [
-        ['CJ_EMAIL',       !!process.env.CJ_EMAIL],
-        ['CJ_PASSWORD',    !!process.env.CJ_PASSWORD],
-        ['ALI_APP_KEY',    !!process.env.ALI_APP_KEY],
-        ['ALI_APP_SECRET', !!process.env.ALI_APP_SECRET],
-        ['SERPAPI_KEY',    !!process.env.SERPAPI_KEY],
+        ['CJ_EMAIL',        !!process.env.CJ_EMAIL],
+        ['CJ_PASSWORD',     !!process.env.CJ_PASSWORD],
+        ['ALI_APP_KEY',     !!process.env.ALI_APP_KEY],
+        ['ALI_APP_SECRET',  !!process.env.ALI_APP_SECRET],
+        ['SERPAPI_KEY',     !!process.env.SERPAPI_KEY],
+        ['ANTHROPIC_API_KEY', !!process.env.ANTHROPIC_API_KEY],
       ];
       const setVars    = envCheck.filter(([, v]) => v).map(([k]) => k);
       const missingVars = envCheck.filter(([, v]) => !v).map(([k]) => k);
@@ -31,13 +32,13 @@ export async function scoutProducts(niche, config, log) {
     }
 
     // ── Dev-mode seed fallback ─────────────────────────────────────────────
-    // When all live sources fail in development, use the static seed products
-    // so the pipeline can be exercised end-to-end without API credentials.
-    // Never activates in production (NODE_ENV=production).
+    // fetchLiveProducts already tried all 4 pathways (suppliers, Google Shopping,
+    // trend sourcing, AI research). If it still failed, fall back to seed data
+    // in dev mode so the pipeline can be exercised end-to-end.
     if (process.env.NODE_ENV !== 'production') {
       const seed = getProducts(niche);
       if (seed.length) {
-        log(`⚠️  Using ${seed.length} DEMO products (dev-only). Add valid supplier credentials for live data.`);
+        log(`⚠️  Using ${seed.length} DEMO products (dev-only). Add valid API keys for live data.`);
         products = seed.map(p => ({
           ...p,
           aliProductId: null,
@@ -45,42 +46,42 @@ export async function scoutProducts(niche, config, log) {
           warns: p.warns || [],
         }));
       } else {
-        log('No demo products available for this niche. Fix supplier credentials above to enable live sourcing.');
+        log('No demo products available for this niche.');
         products = [];
       }
     } else {
-      log('All suppliers failed. Fix credentials above to enable live sourcing.');
+      log('All sources failed. Configure at least one: CJ, AliExpress, SERPAPI, or ANTHROPIC API key.');
       products = [];
     }
   }
 
-  if (products._sentimentEnriched) {
-    log('Sentiment enrichment already applied by live catalog');
-    return products;
-  }
-
-  try {
-    const signals = await scoutReddit(nicheConf.redditSubs, log);
-    let boosts = 0;
-    signals.forEach(sig => {
-      products.forEach(p => {
-        const words = p.name.toLowerCase().split(/\s+/);
-        const hit = words.some(w => w.length > 3 && sig.title.toLowerCase().includes(w));
-        if (hit) {
-          p.score = Math.min(100, p.score + 3);
-          p.trend = Math.min(99, p.trend + 2);
-          if (!p.sources.includes('Reddit')) p.sources.push('Reddit');
-          boosts++;
-        }
-      });
-    });
-    log(`Reddit enrichment: ${signals.length} signals → ${boosts} product boosts`);
-  } catch (err) { log(`Reddit scan skipped (${err.message})`); }
-
-  if (process.env.SERPAPI_KEY) {
+  // Sentiment enrichment is now handled inside fetchLiveProducts,
+  // so we only do lightweight Reddit boost + Google Trends enrichment here
+  // for seed/demo products that bypassed the live catalog.
+  if (products.length && !products[0]._source) {
     try {
-      await enrichGoogleTrends(products, nicheConf.keywords, log);
-    } catch (err) { log(`Google Trends enrichment skipped (${err.message})`); }
+      const signals = await scoutReddit(nicheConf.redditSubs, log);
+      let boosts = 0;
+      signals.forEach(sig => {
+        products.forEach(p => {
+          const words = p.name.toLowerCase().split(/\s+/);
+          const hit = words.some(w => w.length > 3 && sig.title.toLowerCase().includes(w));
+          if (hit) {
+            p.score = Math.min(100, p.score + 3);
+            p.trend = Math.min(99, p.trend + 2);
+            if (!p.sources.includes('Reddit')) p.sources.push('Reddit');
+            boosts++;
+          }
+        });
+      });
+      log(`Reddit enrichment: ${signals.length} signals → ${boosts} product boosts`);
+    } catch (err) { log(`Reddit scan skipped (${err.message})`); }
+
+    if (process.env.SERPAPI_KEY) {
+      try {
+        await enrichGoogleTrends(products, nicheConf.keywords, log);
+      } catch (err) { log(`Google Trends enrichment skipped (${err.message})`); }
+    }
   }
 
   return products;

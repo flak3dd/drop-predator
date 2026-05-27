@@ -1,4 +1,5 @@
 import { supplierRouter } from '../suppliers/index.js';
+import { runAllPathways } from './pathways/index.js';
 import cache from './catalog-cache.js';
 import { fullSentimentScan } from '../intelligence/sentiment.js';
 import { runDiscovery } from '../intelligence/discovery.js';
@@ -134,11 +135,25 @@ function mapToSchema(raw, signals) {
   if (trend < -5) warns.push('declining trend');
   if (margin < 35) warns.push('thin margin');
 
-  const sources = [raw._source === 'cj' ? 'CJ Dropshipping' : 'AliExpress'];
+  const sourceMap = {
+    cj:               'CJ Dropshipping',
+    aliexpress:       'AliExpress',
+    '1688':           'Alibaba Factory',
+    'google-shopping': 'Google Shopping',
+    'trend-validated': 'Trend Research',
+    'trend-research':  'Trend Research',
+    'ai-research':     'AI Research',
+    scrape:           'AliExpress',
+  };
+  const sources = [sourceMap[raw._source] || raw._source || 'Unknown'];
   matched.forEach(s => {
     const src = s.source === 'reddit' ? 'Reddit' : s.source === 'google-trends' ? 'Google Trends' : s.source === 'tiktok' ? 'TikTok' : null;
     if (src && !sources.includes(src)) sources.push(src);
   });
+  // Add Reddit source tag for trend-sourced products
+  if ((raw._source === 'trend-validated' || raw._source === 'trend-research') && !sources.includes('Reddit')) {
+    sources.push('Reddit');
+  }
 
   return {
     id, name: raw.name, cat: raw.cat, score, margin, price, cost, landed,
@@ -193,25 +208,7 @@ export async function fetchLiveProducts(niche, config, log) {
   const nicheConf = getNicheConfig(niche);
   const keywords = nicheConf.keywords || [niche];
 
-  // ── Route through supplier router (parallel, health-aware, circuit-broken) ──
-  let rawProducts;
-  try {
-    rawProducts = await supplierRouter.search(keywords, { log });
-  } catch (err) {
-    throw new Error(`${err.message} — configure CJ_EMAIL+CJ_PASSWORD, ALI_APP_KEY+ALI_APP_SECRET, or SERPAPI_KEY`);
-  }
-
-  if (!rawProducts.length) {
-    throw new Error(
-      `No live products found for niche "${niche}". ` +
-      'Configure CJ_EMAIL + CJ_PASSWORD (CJ Dropshipping), ' +
-      'ALI_APP_KEY + ALI_APP_SECRET (AliExpress DS), or ' +
-      'SERPAPI_KEY (1688/Alibaba factory sourcing).',
-    );
-  }
-
-  rawProducts = deduplicateProducts(rawProducts);
-
+  // ── Phase 1: Sentiment scan (used by scoring + AI pathways) ──────────
   log('Running sentiment scan…');
   let signals = [];
   try {
@@ -221,13 +218,64 @@ export async function fetchLiveProducts(niche, config, log) {
       enableAiAnalysis: !!process.env.ANTHROPIC_API_KEY,
     }, (src, count) => log(`Sentiment: ${src} → ${count} signals`));
     log(`Sentiment scan complete: ${signals.length} total signals`);
-  } catch (err) { log(`Sentiment scan failed (${err.message})`); }
+  } catch (err) { log(`Sentiment scan failed (${err.message}) — continuing without signals`); }
 
+  // ── Phase 2: Supplier APIs (primary pathway) ─────────────────────────
+  let rawProducts = [];
+  try {
+    rawProducts = await supplierRouter.search(keywords, { log });
+    if (rawProducts.length) {
+      log(`Supplier APIs: ${rawProducts.length} products`);
+    }
+  } catch (err) {
+    log(`Supplier APIs failed: ${err.message}`);
+  }
+
+  // ── Phase 3: Alternative pathways (cascade when suppliers are thin) ──
+  //
+  // Run alternative pathways when:
+  //  - Suppliers returned nothing (failover)
+  //  - Suppliers returned < 5 products (augmentation)
+  //
+  // Pathways run in parallel: Google Shopping, Trend Sourcing, AI Research
+  if (rawProducts.length < 5) {
+    const reason = rawProducts.length === 0
+      ? 'no supplier products — running alternative pathways'
+      : `only ${rawProducts.length} supplier products — augmenting with alternative pathways`;
+    log(reason);
+
+    try {
+      const pathwayOpts = {
+        log,
+        niche,
+        subreddits: nicheConf.redditSubs || [],
+        signals,
+      };
+      const altProducts = await runAllPathways(keywords, pathwayOpts);
+      if (altProducts.length) {
+        rawProducts = rawProducts.concat(altProducts);
+        log(`Combined: ${rawProducts.length} total raw products (suppliers + pathways)`);
+      }
+    } catch (err) {
+      log(`Alternative pathways failed: ${err.message}`);
+    }
+  }
+
+  // ── Phase 4: Final validation ────────────────────────────────────────
+  if (!rawProducts.length) {
+    throw new Error(
+      `No products found for niche "${niche}" from any source. ` +
+      'Configure at least one: CJ_EMAIL+CJ_PASSWORD, ALI_APP_KEY+ALI_APP_SECRET, ' +
+      'SERPAPI_KEY, or ANTHROPIC_API_KEY.',
+    );
+  }
+
+  rawProducts = deduplicateProducts(rawProducts);
   let products = rawProducts.map(raw => mapToSchema(raw, signals));
 
+  // ── Phase 5: AI Discovery (additive layer on top) ────────────────────
   if (config.enableDiscovery !== false && signals.length > 0) {
     try {
-      // Pass live products as context so AI doesn't re-discover what we already found
       const disc = await runDiscovery(signals, niche, products, { enableAi: !!process.env.ANTHROPIC_API_KEY });
       if (disc.discoveries.length) {
         const discovered = disc.discoveries.slice(0, 3).map(d => discoveryToSchema(d, signals));
@@ -238,7 +286,7 @@ export async function fetchLiveProducts(niche, config, log) {
   }
 
   products.sort((a, b) => b.score - a.score);
-  return products.slice(0, 12);
+  return products.slice(0, 15);
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
