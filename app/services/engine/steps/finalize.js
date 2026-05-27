@@ -1,6 +1,6 @@
 import { registerStep } from './index.js';
 import { checkBudget, flushCost, logCostSummary, clearRunAccumulator } from '../../ai/cost-tracker.js';
-import { allBreakerStatus } from '../../circuit-breaker.js';
+import { allBreakerStatus } from '../../risk/circuit-breaker.js';
 import prisma from '../../../db.server.js';
 
 registerStep('finalize', {
