@@ -58,8 +58,15 @@ export class AliExpressSupplier extends SupplierBase {
   // ── Scout / Affiliate product search ─────────────────────────────────
 
   async search(keywords, opts = {}) {
-    if (!this.isConfigured) return [];
+    if (!this.isConfigured) {
+      (opts.log || (() => {}))('[AliExpress] Skipped — ALI_APP_KEY or ALI_APP_SECRET not set');
+      return [];
+    }
     const { log = () => {}, country = 'US', currency = 'USD' } = opts;
+    // Validate key format before making API calls
+    if (!/^\d+$/.test(process.env.ALI_APP_KEY)) {
+      log(`[AliExpress] ⚠️  ALI_APP_KEY="${process.env.ALI_APP_KEY?.slice(0, 6)}…" does not look like a numeric App Key. Get your App Key from https://openservice.aliexpress.com → My Applications.`);
+    }
     const allProducts = [];
 
     for (const kw of keywords.slice(0, 4)) {
@@ -128,7 +135,10 @@ export class AliExpressSupplier extends SupplierBase {
         log(`AliExpress "${kw}": ${mapped.length} products`);
         await new Promise(r => setTimeout(r, 500));
       } catch (err) {
-        log(`AliExpress "${kw}" failed: ${err.message}`);
+        const hint = err.message?.includes('appkey') || err.message?.includes('401')
+          ? ' — check ALI_APP_KEY is numeric (not email)'
+          : '';
+        log(`[AliExpress] "${kw}" failed: ${err.message}${hint}`);
       }
     }
 

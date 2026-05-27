@@ -8,9 +8,25 @@ export async function scoutProducts(niche, config, log) {
   let products;
   try {
     products = await fetchLiveProducts(niche, config, log);
-    log(`Loaded ${products.length} products from live catalog`);
+    log(`✅ Loaded ${products.length} products from live catalog`);
   } catch (err) {
-    log(`Live catalog unavailable: ${err.message}`);
+    log(`❌ Live catalog failed: ${err.message}`);
+
+    // ── Diagnostic: show which env vars are set vs missing ──────────────
+    const envCheck = [
+      ['CJ_EMAIL',       !!process.env.CJ_EMAIL],
+      ['CJ_PASSWORD',    !!process.env.CJ_PASSWORD],
+      ['ALI_APP_KEY',    !!process.env.ALI_APP_KEY],
+      ['ALI_APP_SECRET', !!process.env.ALI_APP_SECRET],
+      ['SERPAPI_KEY',    !!process.env.SERPAPI_KEY],
+    ];
+    const setVars    = envCheck.filter(([, v]) => v).map(([k]) => k);
+    const missingVars = envCheck.filter(([, v]) => !v).map(([k]) => k);
+    log(`📋 Env check — Set: ${setVars.join(', ') || 'none'} | Missing: ${missingVars.join(', ') || 'none'}`);
+
+    if (process.env.ALI_APP_KEY && !/^\d+$/.test(process.env.ALI_APP_KEY)) {
+      log(`⚠️  ALI_APP_KEY looks wrong — got "${process.env.ALI_APP_KEY.slice(0, 10)}…" but expected a numeric App Key from AliExpress Open Platform`);
+    }
 
     // ── Dev-mode seed fallback ─────────────────────────────────────────────
     // When all live sources fail in development, use the static seed products
@@ -19,7 +35,7 @@ export async function scoutProducts(niche, config, log) {
     if (process.env.NODE_ENV !== 'production') {
       const seed = getProducts(niche);
       if (seed.length) {
-        log(`⚠️  Using ${seed.length} DEMO products (dev-only). Add CJ or AliExpress credentials for live data.`);
+        log(`⚠️  Using ${seed.length} DEMO products (dev-only). Add valid supplier credentials for live data.`);
         products = seed.map(p => ({
           ...p,
           aliProductId: null,
@@ -27,11 +43,11 @@ export async function scoutProducts(niche, config, log) {
           warns: p.warns || [],
         }));
       } else {
-        log('Configure CJ_EMAIL + CJ_PASSWORD or ALI_APP_KEY + ALI_APP_SECRET to enable live dropshipping sourcing.');
+        log('No demo products available for this niche. Fix supplier credentials above to enable live sourcing.');
         products = [];
       }
     } else {
-      log('Configure CJ_EMAIL + CJ_PASSWORD or ALI_APP_KEY + ALI_APP_SECRET to enable live dropshipping sourcing.');
+      log('All suppliers failed. Fix credentials above to enable live sourcing.');
       products = [];
     }
   }
