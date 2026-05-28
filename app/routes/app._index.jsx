@@ -310,8 +310,8 @@ export default function Dashboard() {
       <s-section slot="aside" heading="Quick Actions">
         <s-stack direction="block" gap="base">
           <s-button onClick={() => navigate("/app/drops/new")}>New Drop</s-button>
-          <s-button variant="tertiary" onClick={() => navigate("/app/engine")}>
-            Run AI Engine
+          <s-button variant="tertiary" onClick={() => navigate("/app/command-center")}>
+            Command Center
           </s-button>
           <s-button variant="tertiary" onClick={() => navigate("/app/drops?status=ACTIVE")}>
             View Active Drops
