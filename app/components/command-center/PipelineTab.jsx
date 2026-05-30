@@ -61,6 +61,9 @@ export function PipelineTab() {
   const [enableTrends, setEnableTrends] = useState(true);
   const [enableTikTok, setEnableTikTok] = useState(false);
   const [enableInstagram, setEnableInstagram] = useState(false);
+  const [enableYouTube, setEnableYouTube] = useState(false);
+  const [enablePinterest, setEnablePinterest] = useState(false);
+  const [enableTwitter, setEnableTwitter] = useState(false);
   const [intentThreshold, setIntentThreshold] = useState(0);
 
   const logRef = useRef(null);
@@ -106,6 +109,7 @@ export function PipelineTab() {
           config: {
             scoreThreshold, marginFloor, autoImport, autoMedia, maxProducts,
             enableReddit, enableHN, enableTrends, enableTikTok, enableInstagram,
+            enableYouTube, enablePinterest, enableTwitter,
             intentThreshold,
           },
         }),
@@ -276,6 +280,9 @@ export function PipelineTab() {
                       <ToggleChip label="Trends" active={enableTrends} onClick={() => setEnableTrends(!enableTrends)} />
                       <ToggleChip label="TikTok" active={enableTikTok} onClick={() => setEnableTikTok(!enableTikTok)} />
                       <ToggleChip label="Instagram" active={enableInstagram} onClick={() => setEnableInstagram(!enableInstagram)} />
+                      <ToggleChip label="YouTube" active={enableYouTube} onClick={() => setEnableYouTube(!enableYouTube)} />
+                      <ToggleChip label="Pinterest" active={enablePinterest} onClick={() => setEnablePinterest(!enablePinterest)} />
+                      <ToggleChip label="Twitter" active={enableTwitter} onClick={() => setEnableTwitter(!enableTwitter)} />
                     </div>
                   </div>
 

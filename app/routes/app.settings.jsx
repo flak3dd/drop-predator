@@ -447,6 +447,10 @@ export default function Settings() {
               { id: "google-trends", label: "Google Trends", desc: "Uses SERPAPI_KEY", needsKey: false },
               { id: "tiktok", label: "TikTok", desc: "EnsembleData or TikTok Research API", needsKey: true, hasSecret: true },
               { id: "instagram", label: "Instagram", desc: "EnsembleData or Graph API", needsKey: true },
+              { id: "youtube", label: "YouTube", desc: "EnsembleData or YouTube Data API v3", needsKey: true },
+              { id: "pinterest", label: "Pinterest", desc: "RapidAPI Pinterest or Pinterest API v5", needsKey: true },
+              { id: "twitter", label: "Twitter / X", desc: "RapidAPI Twitter or Twitter API v2", needsKey: true },
+              { id: "amazon", label: "Amazon Products", desc: "Uses SERPAPI_KEY for Amazon bestseller data", needsKey: false },
               { id: "serpapi", label: "SerpAPI (Ads/Competitors)", desc: "For ad competition + competitor pricing", needsKey: true },
             ].map((src) => (
               <s-box key={src.id} padding="base" borderWidth="base" borderRadius="base">
