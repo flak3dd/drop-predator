@@ -205,7 +205,7 @@ def save_archive(ideas: list[dict]) -> None:
 
 
 def generate_id() -> str:
-    return datetime.now().strftime("%Y%m%d%H%M%S")
+    return datetime.now().strftime("%Y%m%d%H%M%S%f")
 
 
 def find_idea(ideas: list[dict], idea_id: str) -> dict | None:
