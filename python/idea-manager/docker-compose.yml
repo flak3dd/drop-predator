@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  idea-manager:
+    build: .
+    container_name: idea-manager
+    volumes:
+      - idea-data:/root/.ideas     # Persist idea data
+      - ollama-data:/root/.ollama  # Persist Ollama models
+    environment:
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+volumes:
+  idea-data:
+  ollama-data:
