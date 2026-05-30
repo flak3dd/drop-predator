@@ -7,7 +7,8 @@
  * autonomous profit engine:
  *
  *   Phase 1 — DISCOVER    Market intelligence scan → trending niches & demand signals
- *   Phase 2 — SOURCE      Multi-pathway product sourcing → supplier APIs + Google + Trends + AI
+ *                          Sources: Reddit, HN, Google Trends, TikTok, Instagram, YouTube, Pinterest, Twitter
+ *   Phase 2 — SOURCE      Multi-pathway product sourcing → supplier APIs + Google + Trends + AI + Amazon
  *   Phase 3 — VALIDATE    Sentiment analysis + competitor pricing → filter for profit potential
  *   Phase 4 — OPTIMIZE    AI listing generation + dynamic pricing → conversion + margin maximization
  *   Phase 5 — LAUNCH      Auto-import to Shopify → live in store
@@ -89,6 +90,9 @@ export async function runProfitPipeline({ niche, admin, shop, config = {}, emit 
         enableTrends:    config.enableTrends !== false,
         enableTikTok:    config.enableTikTok || false,
         enableInstagram: config.enableInstagram || false,
+        enableYouTube:   config.enableYouTube || false,
+        enablePinterest: config.enablePinterest || false,
+        enableTwitter:   config.enableTwitter || false,
         instagramHashtags: nicheConf.instagramHashtags || [],
         enableAiAnalysis: !!process.env.ANTHROPIC_API_KEY,
       }, (progress) => {

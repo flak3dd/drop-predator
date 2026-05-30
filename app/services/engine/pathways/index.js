@@ -8,15 +8,17 @@
  * Each pathway exports: { name, isAvailable(), search(keywords, opts) }
  *
  * Priority order:
- *   A. Supplier APIs  — real supplier data (CJ, AliExpress, 1688)
- *   B. Google Shopping — broad retail pricing via SERPAPI
- *   C. Trend Sourcing  — Reddit mining → Google Shopping validation
- *   D. AI Research     — Claude-generated product ideas + price validation
+ *   A. Supplier APIs     — real supplier data (CJ, AliExpress, 1688)
+ *   B. Google Shopping   — broad retail pricing via SERPAPI
+ *   C. Trend Sourcing    — Reddit mining → Google Shopping validation
+ *   D. AI Research       — Claude-generated product ideas + price validation
+ *   E. Amazon Bestsellers — Amazon product data + demand signals via SERPAPI
  */
 
-import * as googleShopping   from './google-shopping.js';
-import * as trendSourcing     from './trend-sourcing.js';
-import * as aiProductResearch from './ai-product-research.js';
+import * as googleShopping      from './google-shopping.js';
+import * as trendSourcing        from './trend-sourcing.js';
+import * as aiProductResearch    from './ai-product-research.js';
+import * as amazonBestsellers    from './amazon-bestsellers.js';
 
 /**
  * Pathways in cascade order (supplier APIs are handled separately
@@ -26,6 +28,7 @@ export const pathways = [
   googleShopping,
   trendSourcing,
   aiProductResearch,
+  amazonBestsellers,
 ];
 
 /**

@@ -4,7 +4,7 @@
  * Market Intelligence Module — public API.
  *
  * AI-operated continuous system for:
- *   • Real-time sentiment analysis (Reddit, HN, Google Trends, TikTok)
+ *   • Real-time sentiment analysis (Reddit, HN, Google Trends, TikTok, Instagram, YouTube, Pinterest, Twitter)
  *   • Product discovery from social signals
  *   • Brand research & SEO keyword optimization
  *   • Trend velocity monitoring with alert thresholds
@@ -47,6 +47,9 @@ export const intelligence = {
       enableTrends = true,
       enableTikTok = false,
       enableInstagram = false,
+      enableYouTube = false,
+      enablePinterest = false,
+      enableTwitter = false,
       enableAiAnalysis = true,
       enableDiscovery = true,
       enableBrandResearch = true,
@@ -73,6 +76,9 @@ export const intelligence = {
       enableTrends,
       enableTikTok,
       enableInstagram,
+      enableYouTube,
+      enablePinterest,
+      enableTwitter,
       instagramHashtags,
       enableAiAnalysis: enableAiAnalysis && !!process.env.ANTHROPIC_API_KEY,
     }, onProgress);

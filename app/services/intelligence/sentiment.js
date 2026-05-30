@@ -240,7 +240,7 @@ function computeHypeScore(signal) {
 
   hype += Math.round((signal.sentiment + 1) / 2 * 25);
 
-  const sourceWeights = { 'reddit': 12, 'hackernews': 10, 'google-trends': 15, 'tiktok': 14, 'instagram': 13, 'producthunt': 8 };
+  const sourceWeights = { 'reddit': 12, 'hackernews': 10, 'google-trends': 15, 'tiktok': 14, 'instagram': 13, 'youtube': 14, 'pinterest': 12, 'twitter': 13, 'producthunt': 8 };
   hype += sourceWeights[signal.source] || 5;
 
   const ageHours = (Date.now() - signal.ts) / 3600000;
@@ -264,6 +264,7 @@ export async function fullSentimentScan(config, onProgress) {
     subreddits = [], keywords = [],
     enableReddit = true, enableHN = true, enableTrends = true,
     enableTikTok = true, enableInstagram = false, enableAiAnalysis = true,
+    enableYouTube = false, enablePinterest = false, enableTwitter = false,
     instagramHashtags = [],
   } = config;
 
@@ -293,6 +294,30 @@ export async function fullSentimentScan(config, onProgress) {
       import('./scanners/instagram.js')
         .then(mod => mod.search(instagramHashtags.length ? instagramHashtags : keywords, { createSignal, quickSentiment }))
         .then(s => { progress('instagram', s.length); return s; })
+        .catch(() => [])
+    );
+  }
+  if (enableYouTube && keywords.length) {
+    scanners.push(
+      import('./scanners/youtube.js')
+        .then(mod => mod.search(keywords, { createSignal, quickSentiment }))
+        .then(s => { progress('youtube', s.length); return s; })
+        .catch(() => [])
+    );
+  }
+  if (enablePinterest && keywords.length) {
+    scanners.push(
+      import('./scanners/pinterest.js')
+        .then(mod => mod.search(keywords, { createSignal, quickSentiment }))
+        .then(s => { progress('pinterest', s.length); return s; })
+        .catch(() => [])
+    );
+  }
+  if (enableTwitter && keywords.length) {
+    scanners.push(
+      import('./scanners/twitter.js')
+        .then(mod => mod.search(keywords, { createSignal, quickSentiment }))
+        .then(s => { progress('twitter', s.length); return s; })
         .catch(() => [])
     );
   }

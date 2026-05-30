@@ -143,11 +143,18 @@ function mapToSchema(raw, signals) {
     'trend-validated': 'Trend Research',
     'trend-research':  'Trend Research',
     'ai-research':     'AI Research',
+    amazon:           'Amazon',
     scrape:           'AliExpress',
   };
   const sources = [sourceMap[raw._source] || raw._source || 'Unknown'];
   matched.forEach(s => {
-    const src = s.source === 'reddit' ? 'Reddit' : s.source === 'google-trends' ? 'Google Trends' : s.source === 'tiktok' ? 'TikTok' : null;
+    const src = s.source === 'reddit' ? 'Reddit'
+      : s.source === 'google-trends' ? 'Google Trends'
+      : s.source === 'tiktok' ? 'TikTok'
+      : s.source === 'youtube' ? 'YouTube'
+      : s.source === 'pinterest' ? 'Pinterest'
+      : s.source === 'twitter' ? 'Twitter'
+      : null;
     if (src && !sources.includes(src)) sources.push(src);
   });
   // Add Reddit source tag for trend-sourced products
